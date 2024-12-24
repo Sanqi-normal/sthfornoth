@@ -1,0 +1,48 @@
+body {
+    font-family: Arial, sans-serif;
+    background: rgb(255, 241, 200) !important;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* 防止页面偏移 */
+}
+#chatBox {
+    border: 1px solid #ccc;
+    padding: 10px;
+    height: 350px;
+    overflow-y: auto;
+    background: rgb(255, 248, 227) !important;
+    margin-bottom: 10px;
+    border-radius: 10px;
+}
+#userInput {
+    width: 85%;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+#sendButton {
+    padding: 10px;
+    cursor: pointer;
+}
+
+.user-message {
+    color: rgb(6, 33, 29);
+    text-align: left; /* 用户消息右对齐 */
+    margin-left: 20px; /* 用户消息左侧留出一些空间 */
+    padding: 5px 10px;
+    border-radius: 10px;
+    display: block; /* 确保每条消息占一行 */
+    clear: both; /* 清除浮动，确保消息按顺序显示 */
+}
+
+.ai-message {
+    background-color: rgb(239, 224, 224);
+    color: rgb(48, 25, 6);
+    text-align: left; /* AI消息左对齐 */
+    margin-right: 20px; /* AI消息右侧留出一些空间 */
+    padding: 5px 10px;
+    border-radius: 10px;
+    display: block; /* 确保每条消息占一行 */
+    white-space: pre-wrap; /* 允许换行 */
+    clear: both; /* 清除浮动，确保消息按顺序显示 */
+}
