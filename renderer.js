@@ -60,7 +60,7 @@ function appendMessage(message, isUser) {
         messageElement.classList.add('user-message');
     } else {
         messageElement.classList.add('ai-message');
-        console.log("AI输出回复");
+        //console.log("AI输出回复");
     }
     chatBox.appendChild(messageElement);
     chatBox.scrollTop = chatBox.scrollHeight; // 滚动到底部
@@ -81,7 +81,7 @@ ipcRenderer.on('main-get-value-request',  (event,arg) => {
 console.log("接收到消息");
    if(arg.elementId=='conversationHistory'){
        value= conversationHistory;
-       console.log("消息id正确:"+arg.elementId);
+       //console.log("消息id正确:"+arg.elementId);
    }
   // 将获取到的值和附加的响应返回给主进程
   ipcRenderer.send('renderer-value-response',value , "conversationHistory");
@@ -91,9 +91,9 @@ console.log("接收到消息");
 ipcRenderer.on('main-holder-text-change',  (event,arg) => {
     userInput.placeholder=arg.text;
     if(arg.text==="输入内容…"){
-        userInput.disable=false;
+        userInput.disabled =false;
     }else{
-        userInput.disable=true;
+        userInput.disabled =true;
     }
 });
 //监听发送信息请求
@@ -101,4 +101,12 @@ ipcRenderer.on('main-append-message',  (event,arg) => {
     appendMessage(arg.aiResponse,arg.value);
     console.log("airesponse");
     conversationHistory+=("AI回复或执行结果："+ arg.aiResponse+"\n");
+});
+//中断子进程
+document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey && event.key === 'd') {
+        console.log("尝试中断进程");
+        event.preventDefault(); // 阻止默认行为
+        ipcRenderer.send('interrupt-subprocesses');
+    }
 });

@@ -1,7 +1,8 @@
 const { ipcMain } = require('electron');
 const { app, BrowserWindow } = require('electron');
-const fs = require('fs');
 
+const fs = require('fs');
+let subprocesses = [];//存储子进程
 
 const systemMessageArray = [10];
 systemMessageArray[0] = "请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。";
@@ -10,18 +11,17 @@ systemMessageArray[2] = "衡量方案的可行性并以数字回复给用户，�
 systemMessageArray[3] = "请使用中文回答,复述错误并对对返回的错误进行分析";
 systemMessageArray[4] = "对返回的错误更改后以代码形式回复；其中路径切记要加双斜杠；代码中所有中文转化为英文字符；";
 
+// 创建一个 AbortController 实例
+const controller = new AbortController();
 
+// 获取 signal 对象
+const signal = controller.signal;
 
 let win;
+
+
+
 let conversationHistory = '';
-// 设置中断信号处理器
-function setupSignalHandler() {
-    process.on('SIGINT', () => {
-        console.log('中断命令执行');
-        userInputplaceHolder("输入内容…"); // 恢复提示
-        process.exit(); // 退出进程
-    });
-}
 function createWindow() {
     win = new BrowserWindow({
         width: 800,
@@ -36,20 +36,22 @@ function createWindow() {
     
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
 
-// 当所有窗口关闭后退出应用
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
+    createWindow();
+    win.on('close', function (e) {
+    
+    if(conversationHistory==''){
+    // 阻止默认关闭事件
+    e.preventDefault();
+    aliceChatlog();
+    console.log("关闭前记录了对话历史");
     }
+  });
+
 });
 
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
-});
+
 
 // 监听渲染进程返回的值
 ipcMain.once('renderer-value-response', (event, value, id) => {
@@ -76,14 +78,17 @@ ipcMain.once('renderer-value-response', (event, value, id) => {
 //监听请求并接收
 ipcMain.on('render-send-fetch-request', (event, value, url,reqvalue) => { 
     console.log(`接收到fetch并开始执行`);
-    sendRequest(reqvalue,value,url);
+    sendRequest(value,url,reqvalue);
     
 });
 
 
-async function sendRequest(reqmessage,message,url){
+async function sendRequest(message,url,reqmessage){
         if(!url){
             url="https://fc.fittenlab.cn/codeapi/chat";
+        }
+        if(reqmessage){
+            reqmessage=" ";
         }
  // 判断前缀并设置不同的系统提示词
         let systemPrompt;
@@ -107,7 +112,7 @@ async function sendRequest(reqmessage,message,url){
                 break;
             case 'default:continue':
             case 'dc':
-                systemPrompt = systemMessageArray[3];
+                systemPrompt = systemMessageArray[4];
                 userMessage = message.replace(inputMessage + ' ', ''); 
                 break;
             case 'exit':
@@ -129,7 +134,8 @@ async function sendRequest(reqmessage,message,url){
             },
             body: JSON.stringify({
     "inputs":"<|system|>\n"+ systemPrompt+"\n<|end|>\n<|user|>\n"+reqmessage+userMessage+"\n<|end|>\n<|assistant|>",
-    "ft_token":""
+    "ft_token":"",
+    "signal":signal
    
 })
         };
@@ -137,8 +143,14 @@ async function sendRequest(reqmessage,message,url){
     userInputplaceHolder("AI响应中…") ;
 
     try {
-        setupSignalHandler();
-        const response = await fetch(url, options);
+
+        const response = await fetch(url, options).catch(error => {
+        if (error.name === 'AbortError') {
+            console.log('请求已取消');
+        } else {
+            console.error('请求出错:', error);
+        }
+    });
         if (!response.ok) {
             throw new Error('网络响应不是ok');
         }
@@ -153,7 +165,6 @@ async function sendRequest(reqmessage,message,url){
                     outputText += obj.delta;
                 }
             });
-            conversationHistory += `AI回复: ${outputText}\n`;
             return outputText;
         }
 
@@ -184,13 +195,11 @@ async function sendRequest(reqmessage,message,url){
                 case 'python':
                     fileExtension = 'py';
                     inputContent += '\ninput("waiting")';
-                    shell='python';
                     break;
                 case 'JavaScript':
                 case 'javascript':
                     fileExtension = 'js';
                     inputContent += ' \nconsole.log("waiting");\nsetInterval(() => {}, 1000); ';
-                    shell='node';
                     break;
                 case 'cmd':
                 case 'Batch':
@@ -205,18 +214,26 @@ async function sendRequest(reqmessage,message,url){
                     userInputplaceHolder("AI重新生成命令中…");
                     return;
             }
+            let fileName;
+            if(shell){
+                 fileName = inputContent;
+            }else{
+               
+            shell = process.platform === 'win32' ? process.env.COMSPEC : process.env.SHELL;
             // 创建脚本文件
-            //const fileName = `aliceScript.${fileExtension}`;
+             fileName = `aliceScript.${fileExtension}`;
             const fs = require('fs');
-            //fs.writeFileSync(fileName, inputContent);
+            fs.writeFileSync(fileName, inputContent);
+            }
+           
 
-            userInputplaceHolder("命令执行中…");
 
-
-     try{  
+     try{   
+        userInputplaceHolder("命令执行中…");
     // 执行脚本并同步获取输出
-const { exec } = require('child_process');
-    exec(inputContent, {shell:shell},(error, stdout, stderr) => {
+    
+    const { exec } = require('child_process');
+    let proc = exec(fileName,{shell:shell},(error, stdout, stderr) => {
             if (error) {
                 appendMessage(`执行错误: ${error.message}`,false);
                 userInputplaceHolder("执行失败，返回错误信息给AI");
@@ -229,16 +246,18 @@ const { exec } = require('child_process');
                     sendRequest('ds ' + error.message); // 发送错误消息给 AI
                 }
             } else {
-                appendMessage(`命令执行完成`, false);
+                appendMessage(`命令执行完成\n输出:${stdout}`, false);
                 // 恢复用户输入框状态
                 userInputplaceHolder("输入内容…"); // 恢复提示
             }
-        });
+        }); 
+        subprocesses.push(proc);
     } catch (error) {
         console.error(`捕获到异常: ${error.message}`);
         userInputplaceHolder("捕获到异常，返回错误信息给AI");
         sendRequest('ds ' + error.message); // 发送错误消息给 AI
     }
+   
 }
  else {
             // 普通回复
@@ -266,3 +285,24 @@ win.webContents.send('main-holder-text-change',{text:text});
 function appendMessage(aiResponse,value){
 win.webContents.send('main-append-message',{aiResponse:aiResponse,value:value});
 }
+
+ipcMain.on('interrupt-subprocesses',(event)=>{
+    console.log("接收到中断的请求");
+    //console.log("当前进程："+subprocesses[0]);
+    // 取消fetch请求
+    if(controller&&signal){
+        console.log("有此fetch请求");
+    }
+    controller.abort();
+    //取消子进程
+    subprocesses.forEach((proc) => {
+                try {
+                    //console.log("已中断");
+                    proc.kill('SIGINT'); // 安全地中断子进程
+                } catch (err) {
+                    console.error(`中断子进程时出错: ${err}`);
+                }
+            });
+            subprocesses = []; // 清空子进程数组
+}
+);
