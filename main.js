@@ -11,16 +11,13 @@ systemMessageArray[2] = "衡量方案的可行性并以数字回复给用户，�
 systemMessageArray[3] = "请使用中文回答,复述错误并对对返回的错误进行分析";
 systemMessageArray[4] = "对返回的错误更改后以代码形式回复；其中路径切记要加双斜杠；代码中所有中文转化为英文字符；";
 
-// 创建一个 AbortController 实例
-const controller = new AbortController();
 
-// 获取 signal 对象
-const signal = controller.signal;
 
 let win;
 
 
-
+let signal;
+let controller;
 let conversationHistory = '';
 function createWindow() {
     win = new BrowserWindow({
@@ -126,7 +123,15 @@ async function sendRequest(message,url,reqmessage){
                 userMessage = message; 
                 break;
         }
+        // 创建一个 AbortController 实例
+        controller = new AbortController();
 
+        // 获取 signal 对象
+        signal = controller.signal;
+        let abortornot;
+        signal.addEventListener('abort',
+  () => abortornot=true
+);
         const options = {
             method: 'POST',
             headers: {
@@ -135,16 +140,16 @@ async function sendRequest(message,url,reqmessage){
             body: JSON.stringify({
     "inputs":"<|system|>\n"+ systemPrompt+"\n<|end|>\n<|user|>\n"+reqmessage+userMessage+"\n<|end|>\n<|assistant|>",
     "ft_token":"",
-    "signal":signal
-   
-})
+}),
+            signal: signal
         };
 
     userInputplaceHolder("AI响应中…") ;
-
+    
+    
     try {
 
-        const response = await fetch(url, options).catch(error => {
+        const response = await fetch(url,options).catch(error => {
         if (error.name === 'AbortError') {
             console.log('请求已取消');
         } else {
@@ -268,8 +273,12 @@ async function sendRequest(message,url,reqmessage){
         }
     } catch (error) {
         console.error('请求出错:', error);
+        if (abortornot) {
+            abortornot=false;
+            appendMessage('会话已取消',false);
+        }else{
         appendMessage('AI正在睡觉.zZ', false);
-        // 恢复用户输入框状态
+        }// 恢复用户输入框状态
          
         userInputplaceHolder("输入内容…"); // 恢复提示
     }
@@ -290,8 +299,8 @@ ipcMain.on('interrupt-subprocesses',(event)=>{
     console.log("接收到中断的请求");
     //console.log("当前进程："+subprocesses[0]);
     // 取消fetch请求
-    if(controller&&signal){
-        console.log("有此fetch请求");
+    if(controller){
+        console.log("存在可取消的fetch");
     }
     controller.abort();
     //取消子进程
