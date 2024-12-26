@@ -8,6 +8,35 @@ const defaultUrl = 'https://fc.fittenlab.cn/codeapi/chat';
 let conversationHistory = " "; // 历史对话记录
 let history = []; // 存储用户命令历史
 let historyIndex = -1; // 当前历史索引
+const fs = require('fs');
+
+// 历史命令文件路径
+const historyFilePath = "C:\\Users\\28171\\Desktop\\aliceChatlog.txt";
+
+// 加载历史命令
+function loadHistory(filePath) {
+    console.log("历史命令正在读取");
+    try {
+        const data = fs.readFileSync(filePath, 'utf8');
+        const lines = data.split('\n').filter(line => line.trim() !== '');
+        const commands = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith('用户先前询问或命令')) {
+                const commandLine = lines[i].split(': ')[1];
+                if (commandLine) {
+                    commands.push(commandLine.trim());
+                }
+            }
+        }
+        console.log("历史命令读取完毕");
+        return commands.reverse();
+    } catch (err) {
+        // 如果文件不存在，返回空数组
+        console.error("历史命令读取失败，检查历史记录保存路径；若首次启用，则忽略此错误");
+        return [];
+    }
+}
 
 // 发送按钮点击事件
 sendButton.onclick = sendMessage;
@@ -22,6 +51,12 @@ userInput.addEventListener('keypress', function (event) {
 // 处理箭头键事件，用于浏览历史记录
 userInput.addEventListener('keydown', function (event) {
     if (event.key === 'ArrowUp') {
+        if(!history[0]){
+            history = loadHistory(historyFilePath);
+        }else{
+            console.log(history[0]);
+        }
+
         if (historyIndex < history.length - 1) {
             historyIndex++; // 增加索引
             userInput.value = history[historyIndex]; // 更新输入框内容
@@ -72,13 +107,13 @@ function appendMessage(message, isUser) {
         const url = urlInput.value.trim() || defaultUrl;
 
         ipcRenderer.send('render-send-fetch-request', message,url,requestmessage);
-        console.log("发送fetch请求");
+        //console.log("发送fetch请求");
     }
            
 // 监听主进程的请求
 ipcRenderer.on('main-get-value-request',  (event,arg) => {
     let value="";
-console.log("接收到消息");
+    //console.log("接收到消息");
    if(arg.elementId=='conversationHistory'){
        value= conversationHistory;
        //console.log("消息id正确:"+arg.elementId);
@@ -99,7 +134,7 @@ ipcRenderer.on('main-holder-text-change',  (event,arg) => {
 //监听发送信息请求
 ipcRenderer.on('main-append-message',  (event,arg) => {
     appendMessage(arg.aiResponse,arg.value);
-    console.log("airesponse");
+    //console.log("airesponse");
     conversationHistory+=("AI回复或执行结果："+ arg.aiResponse+"\n");
 });
 //中断子进程
