@@ -4,13 +4,50 @@ const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
 let subprocesses = [];//存储子进程
 
-const systemMessageArray = [10];
-systemMessageArray[0] = "请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。";
-systemMessageArray[1] = "对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；如果用户存在某个环节未提供具体值，如任意需要的文件名，文件内容，具体的路径信息，必须要求用户完整提供而不能自己编造，且若用户提到的文件未找到，要询问用户是否新建；其中路径切记要加双斜杠；代码中所有中文转化为英文字符；如果用户返回代码或命令，则以代码的形式做出完全一样的返回。";
-systemMessageArray[2] = "衡量方案的可行性并以数字回复给用户，第一个方案数字为0，此后依次加1；仅返回方案对应的数字，返回的数字不应超过方案数量，任何情况下不返回其他。";
-systemMessageArray[3] = "请使用中文回答,复述错误并对对返回的错误进行分析";
-systemMessageArray[4] = "对返回的错误更改后以代码形式回复；其中路径切记要加双斜杠；代码中所有中文转化为英文字符；";
+const systemMessageType = {
+    DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。`,
+    CODE: `对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；
 
+            如果用户存在某个环节未提供具体值，如:
+            - 任意需要的文件名
+            - 文件内容
+            - 具体的路径信息
+            必须要求用户完整提供而不能自己编造；
+
+            若用户提到的文件未找到，要询问用户是否新建；
+
+            代码注意事项：
+            - 禁止输出注释，仅输出必要的命令
+            - 路径必须使用双斜杠
+            - 代码中所有中文需转化为英文字符
+            - 如果用户返回代码或命令，则以代码的形式做出完全一样的返回,如果用户限定了语言，却与用户的代码不适用，则改写用户的代码为支持此语言的写法
+            - 如果powershell可运行此格式代码，则默认返回的shell语言为powershell`,
+    EVALUATE: `衡量方案的可行性并以数字回复给用户：
+
+                规则：
+                - 用户输入会以"[num]:[task]"的形式
+                - 若task中包含了结果为true与false的事件，返回真值对应的num，若存在多个真值，返回第一个真值对应的[num]
+                - 若task为多个不同方案，返回正确task中最合适的方案开头对应的num，合适的判断标准包括“安全性”“准确性”“简易性”
+                - 只允许返回数字，任何情况下不返回其他内容`,
+    ERROR: `对返回的错误进行分析：
+
+            分析要求:
+            - 使用中文回答
+            - 复述错误
+            - 分析错误原因
+            - 提供解决方案
+            - 不允许以代码形式回复`,
+    ERROR_CODE: `你将接收到错误代码和错误信息
+                - 提供修正后的代码：
+
+
+                代码要求：
+                - 禁止输出注释，仅输出必要的命令
+                - 以代码形式回复修正后的完整代码
+                - 路径必须使用双斜杠
+                - 代码中所有中文转化为英文字符
+                - 若代码适用于Unix/linux系统，则返回bash`,
+};
 
 
 let win;
@@ -74,7 +111,7 @@ ipcMain.once('renderer-value-response', (event, value, id) => {
 
 //监听请求并接收
 ipcMain.on('render-send-fetch-request', (event, value, url,reqvalue) => { 
-    console.log(`接收到fetch并开始执行`);
+    //console.log(`接收到fetch并开始执行`);
     sendRequest(value,url,reqvalue);
     
 });
@@ -91,38 +128,37 @@ async function sendRequest(message,url,reqmessage){
         let systemPrompt;
         let userMessage;
         let inputMessage = message.split(' ')[0]; // 获取用户输入的前缀
-        console.log(inputMessage);
         switch (inputMessage) {
 
-            case 'Alice': 
-                systemPrompt = systemMessageArray[1];
-                userMessage = message.replace(inputMessage + ' ', ''); //如果有特殊前缀则在输入中去掉，以下同
-                break;
-            case '0/1':
-                systemPrompt = systemMessageArray[2];
-                userMessage = message.replace(inputMessage + ' ', ''); 
-                break;
-            case 'default:stop':
-            case 'ds':
-                systemPrompt = systemMessageArray[3];
-                userMessage = message.replace(inputMessage + ' ', ''); 
-                break;
-            case 'default:continue':
-            case 'dc':
-                systemPrompt = systemMessageArray[4];
-                userMessage = message.replace(inputMessage + ' ', ''); 
-                break;
-            case 'exit':
-            case 'exitchatsave':
-            case 'ecs':
-                aliceChatlog();
-                break;
-            
-            default:
-                systemPrompt = systemMessageArray[0];
-                userMessage = message; 
-                break;
-        }
+        case 'Alice':
+            systemPrompt = systemMessageType.CODE;
+            userMessage = message.replace(inputMessage + ' ', ''); //如果有特殊前缀则在输入中去掉，以下同
+            break;
+        case '0/1':
+            systemPrompt = systemMessageType.EVALUATE;
+            userMessage = message.replace(inputMessage + ' ', '');
+            break;
+        case 'default:stop':
+        case 'ds':
+            systemPrompt = systemMessageType.ERROR;
+            userMessage = message.replace(inputMessage + ' ', '');
+            break;
+        case 'default:continue':
+        case 'dc':
+            systemPrompt = systemMessageType.ERROR_CODE;
+            userMessage = message.replace(inputMessage + ' ', '');
+            break;
+        case 'exit':
+        case 'exitchatsave':
+        case 'ecs':
+            aliceChatlog();
+            break;
+
+        default:
+            systemPrompt = systemMessageType.DEFAULT;
+            userMessage = message;
+            break;
+    }
         // 创建一个 AbortController 实例
         controller = new AbortController();
 
@@ -188,8 +224,10 @@ async function sendRequest(message,url,reqmessage){
             // 确定文件扩展名
             let fileExtension;
             let shell;
+            console.log(scriptType);
             switch (scriptType) {
                 case 'sh':
+                case 'shell':
                 case 'Bash':
                 case 'bash':
                     fileExtension = 'sh';
@@ -206,6 +244,11 @@ async function sendRequest(message,url,reqmessage){
                     fileExtension = 'js';
                     inputContent += ' \nconsole.log("waiting");\nsetInterval(() => {}, 1000); ';
                     break;
+                case 'PowerShell':
+                case 'powershell':
+                    fileExtension = 'ps1';
+                    shell='powershell';
+                    break;
                 case 'cmd':
                 case 'Batch':
                 case 'batch':
@@ -215,7 +258,7 @@ async function sendRequest(message,url,reqmessage){
                     break;
                 default:
                     sendRequest("dc "+scriptType+'是不支持的脚本类型，支持bash、python、javaScript、batch');
-                    appendMessage('AI回复了不支持的脚本类型，正在返回ai重新生成', false);
+                    appendMessage(`AI回复了不支持的脚本类型:${scriptType}，正在返回ai重新生成`, false);
                     userInputplaceHolder("AI重新生成命令中…");
                     return;
             }
@@ -224,7 +267,7 @@ async function sendRequest(message,url,reqmessage){
                  fileName = inputContent;
             }else{
                
-            shell = process.platform === 'win32' ? process.env.COMSPEC : process.env.SHELL;
+            shell = 'powershell';
             // 创建脚本文件
              fileName = `aliceScript.${fileExtension}`;
             const fs = require('fs');
@@ -234,9 +277,8 @@ async function sendRequest(message,url,reqmessage){
 
 
      try{   
-        userInputplaceHolder("命令执行中…");
+        userInputplaceHolder(`命令执行中，此次执行的shell为：${shell}`);
     // 执行脚本并同步获取输出
-    
     const { exec } = require('child_process');
     let proc = exec(fileName,{shell:shell},(error, stdout, stderr) => {
             if (error) {
@@ -248,7 +290,7 @@ async function sendRequest(message,url,reqmessage){
                     appendMessage(`错误输出: ${stderr}`,false);
                     sendRequest('dc ' + stderr.toString()); // 发送标准错误输出给 AI
                 } else {
-                    sendRequest('ds ' + error.message); // 发送错误消息给 AI
+                    sendRequest('dc ' +inputContent+ error.message); // 发送错误消息给 AI
                 }
             } else {
                 appendMessage(`命令执行完成\n输出:${stdout}`, false);
