@@ -4,13 +4,43 @@ const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
 let subprocesses = [];//存储子进程
 
-const systemMessageArray = [10];
-systemMessageArray[0] = "请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。";
-systemMessageArray[1] = "对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；如果用户存在某个环节未提供具体值，如任意需要的文件名，文件内容，具体的路径信息，必须要求用户完整提供而不能自己编造，且若用户提到的文件未找到，要询问用户是否新建；其中路径切记要加双斜杠；代码中所有中文转化为英文字符；如果用户返回代码或命令，则以代码的形式做出完全一样的返回。";
-systemMessageArray[2] = "衡量方案的可行性并以数字回复给用户，第一个方案数字为0，此后依次加1；仅返回方案对应的数字，返回的数字不应超过方案数量，任何情况下不返回其他。";
-systemMessageArray[3] = "请使用中文回答,复述错误并对对返回的错误进行分析";
-systemMessageArray[4] = "对返回的错误更改后以代码形式回复；其中路径切记要加双斜杠；代码中所有中文转化为英文字符；";
+const systemMessageType = {
+    DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。`,
+    CODE: `对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；
 
+            如果用户存在某个环节未提供具体值，如:
+            - 任意需要的文件名
+            - 文件内容
+            - 具体的路径信息
+            必须要求用户完整提供而不能自己编造；
+
+            若用户提到的文件未找到，要询问用户是否新建；
+
+            注意事项：
+            - 路径必须使用双斜杠
+            - 代码中所有中文需转化为英文字符
+            - 如果用户返回代码或命令，则以代码的形式做出完全一样的返回`,
+    EVALUATE: `衡量方案的可行性并以数字回复给用户：
+
+                规则：
+                - 返回最合适的方案开头对应的数字
+                - 只允许返回数字，任何情况下不返回其他内容`,
+    ERROR: `对返回的错误进行分析：
+
+            分析要求:
+            - 使用中文回答
+            - 复述错误
+            - 分析错误原因
+            - 提供解决方案
+            - 不允许以代码形式回复`,
+    ERROR_CODE: `提供修正后的代码：
+
+
+                代码要求：
+                - 路径必须使用双斜杠
+                - 代码中所有中文转化为英文字符
+                - 以代码形式回复修正后的完整代码`,
+};
 
 
 let win;
@@ -94,35 +124,35 @@ async function sendRequest(message,url,reqmessage){
         console.log(inputMessage);
         switch (inputMessage) {
 
-            case 'Alice': 
-                systemPrompt = systemMessageArray[1];
-                userMessage = message.replace(inputMessage + ' ', ''); //如果有特殊前缀则在输入中去掉，以下同
-                break;
-            case '0/1':
-                systemPrompt = systemMessageArray[2];
-                userMessage = message.replace(inputMessage + ' ', ''); 
-                break;
-            case 'default:stop':
-            case 'ds':
-                systemPrompt = systemMessageArray[3];
-                userMessage = message.replace(inputMessage + ' ', ''); 
-                break;
-            case 'default:continue':
-            case 'dc':
-                systemPrompt = systemMessageArray[4];
-                userMessage = message.replace(inputMessage + ' ', ''); 
-                break;
-            case 'exit':
-            case 'exitchatsave':
-            case 'ecs':
-                aliceChatlog();
-                break;
-            
-            default:
-                systemPrompt = systemMessageArray[0];
-                userMessage = message; 
-                break;
-        }
+        case 'Alice':
+            systemPrompt = systemMessageType.CODE;
+            userMessage = message.replace(inputMessage + ' ', ''); //如果有特殊前缀则在输入中去掉，以下同
+            break;
+        case '0/1':
+            systemPrompt = systemMessageType.EVALUATE;
+            userMessage = message.replace(inputMessage + ' ', '');
+            break;
+        case 'default:stop':
+        case 'ds':
+            systemPrompt = systemMessageType.ERROR;
+            userMessage = message.replace(inputMessage + ' ', '');
+            break;
+        case 'default:continue':
+        case 'dc':
+            systemPrompt = systemMessageType.ERROR_CODE;
+            userMessage = message.replace(inputMessage + ' ', '');
+            break;
+        case 'exit':
+        case 'exitchatsave':
+        case 'ecs':
+            aliceChatlog();
+            break;
+
+        default:
+            systemPrompt = systemMessageType.DEFAULT;
+            userMessage = message;
+            break;
+    }
         // 创建一个 AbortController 实例
         controller = new AbortController();
 
