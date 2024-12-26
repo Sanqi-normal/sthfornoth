@@ -16,10 +16,12 @@ const systemMessageType = {
 
             若用户提到的文件未找到，要询问用户是否新建；
 
-            注意事项：
+            代码注意事项：
+            - 禁止输出注释，仅输出必要的命令
             - 路径必须使用双斜杠
             - 代码中所有中文需转化为英文字符
-            - 如果用户返回代码或命令，则以代码的形式做出完全一样的返回`,
+            - 如果用户返回代码或命令，则以代码的形式做出完全一样的返回,如果用户限定了语言，却与用户的代码不适用，则改写用户的代码为支持此语言的写法
+            - 如果powershell可运行此格式代码，则默认返回的shell语言为powershell`,
     EVALUATE: `衡量方案的可行性并以数字回复给用户：
 
                 规则：
@@ -35,13 +37,16 @@ const systemMessageType = {
             - 分析错误原因
             - 提供解决方案
             - 不允许以代码形式回复`,
-    ERROR_CODE: `提供修正后的代码：
+    ERROR_CODE: `你将接收到错误代码和错误信息
+                - 提供修正后的代码：
 
 
                 代码要求：
+                - 禁止输出注释，仅输出必要的命令
                 - 以代码形式回复修正后的完整代码
                 - 路径必须使用双斜杠
-                - 代码中所有中文转化为英文字符`,
+                - 代码中所有中文转化为英文字符
+                - 若代码适用于Unix/linux系统，则返回bash`,
 };
 
 
@@ -106,7 +111,7 @@ ipcMain.once('renderer-value-response', (event, value, id) => {
 
 //监听请求并接收
 ipcMain.on('render-send-fetch-request', (event, value, url,reqvalue) => { 
-    console.log(`接收到fetch并开始执行`);
+    //console.log(`接收到fetch并开始执行`);
     sendRequest(value,url,reqvalue);
     
 });
@@ -123,7 +128,6 @@ async function sendRequest(message,url,reqmessage){
         let systemPrompt;
         let userMessage;
         let inputMessage = message.split(' ')[0]; // 获取用户输入的前缀
-        console.log(inputMessage);
         switch (inputMessage) {
 
         case 'Alice':
@@ -149,7 +153,23 @@ async function sendRequest(message,url,reqmessage){
         case 'ecs':
             aliceChatlog();
             break;
-
+        //跳过ai请求直接执行命令
+        case 'shell':
+        case 'sh':
+        case 'bash':
+        case 'Bash':
+        case 'powershell':
+        case 'ps':
+        case 'cmd':
+        case 'batch':
+        case 'Batch':
+        case 'javascript':
+        case 'js':
+        case 'py':
+        case 'python':
+            userMessage = message.replace(inputMessage + ' ', '');
+            executeCommand(userMessage,inputMessage);
+            return;
         default:
             systemPrompt = systemMessageType.DEFAULT;
             userMessage = message;
@@ -211,89 +231,12 @@ async function sendRequest(message,url,reqmessage){
         const responseLines = aiResponse.split('\n');
         const firstLine = responseLines[0].trim();
         const lastLine = responseLines[responseLines.length - 1].trim();
-
         if (firstLine.startsWith('```') && lastLine.startsWith('```')) {
             // 获取脚本类型
             const scriptType = firstLine.substring(3).trim().toLowerCase(); // 去掉```
             const scriptContent = responseLines.slice(1, -1).join('\n'); // 获取中间内容
             var inputContent = scriptContent;//将文本作为变量         
-            // 确定文件扩展名
-            let fileExtension;
-            let shell;
-            switch (scriptType) {
-                case 'sh':
-                case 'Bash':
-                case 'bash':
-                    fileExtension = 'sh';
-                    inputContent +='\nread -p \'waiting…\'';
-                    shell='D:\\BaiduNetdiskDownload\\Git\\git-bash.exe';
-                    break;
-                case 'Python':
-                case 'python':
-                    fileExtension = 'py';
-                    inputContent += '\ninput("waiting")';
-                    break;
-                case 'JavaScript':
-                case 'javascript':
-                    fileExtension = 'js';
-                    inputContent += ' \nconsole.log("waiting");\nsetInterval(() => {}, 1000); ';
-                    break;
-                case 'cmd':
-                case 'Batch':
-                case 'batch':
-                    fileExtension = 'bat';
-                    inputContent += "\necho 'waiting'\npause\nexit";
-                    shell='cmd';
-                    break;
-                default:
-                    sendRequest("dc "+scriptType+'是不支持的脚本类型，支持bash、python、javaScript、batch');
-                    appendMessage('AI回复了不支持的脚本类型，正在返回ai重新生成', false);
-                    userInputplaceHolder("AI重新生成命令中…");
-                    return;
-            }
-            let fileName;
-            if(shell){
-                 fileName = inputContent;
-            }else{
-               
-            shell = process.platform === 'win32' ? process.env.COMSPEC : process.env.SHELL;
-            // 创建脚本文件
-             fileName = `aliceScript.${fileExtension}`;
-            const fs = require('fs');
-            fs.writeFileSync(fileName, inputContent);
-            }
-           
-
-
-     try{   
-        userInputplaceHolder("命令执行中…");
-    // 执行脚本并同步获取输出
-    
-    const { exec } = require('child_process');
-    let proc = exec(fileName,{shell:shell},(error, stdout, stderr) => {
-            if (error) {
-                appendMessage(`执行错误: ${error.message}`,false);
-                userInputplaceHolder("执行失败，返回错误信息给AI");
-                
-                // 如果有错误输出，将 stderr 作为错误消息
-                if (stderr) {
-                    appendMessage(`错误输出: ${stderr}`,false);
-                    sendRequest('dc ' + stderr.toString()); // 发送标准错误输出给 AI
-                } else {
-                    sendRequest('ds ' + error.message); // 发送错误消息给 AI
-                }
-            } else {
-                appendMessage(`命令执行完成\n输出:${stdout}`, false);
-                // 恢复用户输入框状态
-                userInputplaceHolder("输入内容…"); // 恢复提示
-            }
-        }); 
-        subprocesses.push(proc);
-    } catch (error) {
-        console.error(`捕获到异常: ${error.message}`);
-        userInputplaceHolder("捕获到异常，返回错误信息给AI");
-        sendRequest('ds ' + error.message); // 发送错误消息给 AI
-    }
+            executeCommand(inputContent,scriptType);
    
 }
  else {
@@ -347,3 +290,92 @@ ipcMain.on('interrupt-subprocesses',(event)=>{
             subprocesses = []; // 清空子进程数组
 }
 );
+
+function executeCommand(inputContent,scriptType){
+  // 确定文件扩展名
+            let fileExtension;
+            let shell;
+            console.log(scriptType);
+            switch (scriptType) {
+                case 'sh':
+                case 'shell':
+                case 'Bash':
+                case 'bash':
+                    fileExtension = 'sh';
+                    inputContent +='\nread -p \'waiting…\'';
+                    shell='D:\\BaiduNetdiskDownload\\Git\\git-bash.exe';
+                    break;
+                case 'Python':
+                case 'python':
+                case 'py':
+                    fileExtension = 'py';
+                    inputContent += '\ninput("waiting")';
+                    break;
+                case 'JavaScript':
+                case 'javascript':
+                case 'js':
+                    fileExtension = 'js';
+                    inputContent += ' \nconsole.log("waiting");\nsetInterval(() => {}, 1000); ';
+                    break;
+                case 'PowerShell':
+                case 'powershell':
+                case 'ps':
+                    fileExtension = 'ps1';
+                    shell='powershell';
+                    break;
+                case 'cmd':
+                case 'Batch':
+                case 'batch':
+                    fileExtension = 'bat';
+                    inputContent += "\necho 'waiting'\npause\nexit";
+                    shell='cmd';
+                    break;
+                default:
+                    sendRequest("dc "+scriptType+'是不支持的脚本类型，支持bash、python、javaScript、batch');
+                    appendMessage(`AI回复了不支持的脚本类型:${scriptType}，正在返回ai重新生成`, false);
+                    userInputplaceHolder("AI重新生成命令中…");
+                    return;
+            }
+            let fileName;
+            if(shell){
+                 fileName = inputContent;
+            }else{
+               
+            shell = 'powershell';
+            // 创建脚本文件
+             fileName = `aliceScript.${fileExtension}`;
+            const fs = require('fs');
+            fs.writeFileSync(fileName, inputContent);
+            }
+           
+
+
+     try{   
+        userInputplaceHolder(`命令执行中，此次执行的shell为：${shell}`);
+    // 执行脚本并同步获取输出
+    const { exec } = require('child_process');
+    let proc = exec(fileName,{shell:shell},(error, stdout, stderr) => {
+            if (error) {
+                appendMessage(`执行错误: ${error.message}`,false);
+                userInputplaceHolder("执行失败，返回错误信息给AI");
+                
+                // 如果有错误输出，将 stderr 作为错误消息
+                if (stderr) {
+                    appendMessage(`错误输出: ${stderr}`,false);
+                    sendRequest('dc ' + stderr.toString()); // 发送标准错误输出给 AI
+                } else {
+                    sendRequest('dc ' +inputContent+ error.message); // 发送错误消息给 AI
+                }
+            } else {
+                appendMessage(`命令执行完成\n输出:${stdout}`, false);
+                // 恢复用户输入框状态
+                userInputplaceHolder("输入内容…"); // 恢复提示
+            }
+        }); 
+        subprocesses.push(proc);
+    } catch (error) {
+        console.error(`捕获到异常: ${error.message}`);
+        userInputplaceHolder("捕获到异常，返回错误信息给AI");
+        sendRequest('ds ' + error.message); // 发送错误消息给 AI
+    }
+}
