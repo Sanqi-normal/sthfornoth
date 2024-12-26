@@ -8,11 +8,9 @@ const systemMessageType = {
     DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。`,
     CODE: `对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；
 
-            如果用户存在某个环节未提供具体值，如:
-            - 任意需要的文件名
-            - 文件内容
-            - 具体的路径信息
-            必须要求用户完整提供而不能自己编造；
+            如果用户存在某个环节未提供必需的具体值，必须要求用户完整提供而不能自己编造；
+            
+            如果用户给出了文件名而没有给路径，要添加获取文件路径的代码并移动到此目录下，路径不能自己捏造而是利用命令行搜索文件路径的代码获取。
 
             若用户提到的文件未找到，要询问用户是否新建；
 
@@ -47,7 +45,44 @@ const systemMessageType = {
                 - 路径必须使用双斜杠
                 - 代码中所有中文转化为英文字符
                 - 若代码适用于Unix/linux系统，则返回bash`,
+    EXECUTE:`
+            进入自反模式，此模式下，你将以用户命令为目的，发送完全为powershell代码格式的消息。
+            你将不断收到自己代码执行的处理结果，并返回新的代码以供程序执行。
+            上次你发送的代码和执行返回的结果都将返回给你自己，用户无法收到，因此发送的代码要以接收代码的信息为目的。
+            在此过程中如有下载或其他有风险的操作应更换方法，如没有方法，需停止
+            
+            用户请求内容以exe开头：
+
+            - 这表示这是用户发出的命令，你应当以此为最终目标。
+            - 确立达成这个最终目标第一步骤
+            - 返回第一步骤需要执行的代码，若第一步骤需要用户提供必要的参数，如文件名，路径等，则向用户请求参数
+
+            用户请求内容以self开头：
+            
+            - 这表明这是你自己发送的代码响应的结果，同时也包含了用户最初命令，用户无法收到
+            - 根据代码执行结果确定下一步需要发送的代码
+            - 如果代码返回错误，则表明代码执行出错，要重新修改尝试。
+            代码要求：
+            
+            - 在\`\`\`后标注代码类型为powershell
+            - 每次仅尝试一个步骤，不允许一次返回多个步骤
+            - 标注注释，以供下次返回时自己理解
+            - 路径必须使用双斜杠
+            - 如非写入的文本，代码中所有中文转化为英文字符
+            - 默认shell为powershell，确保代码可供powershell执行
+
+            消息返回：
+
+            - 用户命令最终目的达成后返回文本消息。
+
+            - 尝试多次后若无进展并确认此命令确实无解决办法则中断代码返回，返回文本消息。
+
+            - 其他状态下不允许发送包含文本的消息，必须开头和结尾行为\`\`\`的代码形式
+
+    `,
 };
+
+
 
 
 let win;
@@ -116,7 +151,9 @@ ipcMain.on('render-send-fetch-request', (event, value, url,reqvalue) => {
     
 });
 
-
+        
+        let userAsk='最终目标：';//用于自反命令的全局参数，只有在下一个exe命令时被改变
+        let isExecuteMode=false;//是否自反,会在Exe模式下改变，在每次请求时和被使用时被重置为false
 async function sendRequest(message,url,reqmessage){
         if(!url){
             url="https://fc.fittenlab.cn/codeapi/chat";
@@ -124,6 +161,8 @@ async function sendRequest(message,url,reqmessage){
         if(reqmessage){
             reqmessage=" ";
         }
+
+        isExecuteMode=false;
  // 判断前缀并设置不同的系统提示词
         let systemPrompt;
         let userMessage;
@@ -133,6 +172,16 @@ async function sendRequest(message,url,reqmessage){
         case 'Alice':
             systemPrompt = systemMessageType.CODE;
             userMessage = message.replace(inputMessage + ' ', ''); //如果有特殊前缀则在输入中去掉，以下同
+            break;
+        case 'ch':
+            systemPrompt = systemMessageType.EXECUTE;
+            userMessage = message.replace(inputMessage + ' ', 'exe ');//自反模式首个命令
+            userAsk="最终目标："+userMessage;
+            isExecuteMode=true;
+            break;
+        case 'self':
+            systemPrompt = systemMessageType.EXECUTE;
+            isExecuteMode=true;
             break;
         case '0/1':
             systemPrompt = systemMessageType.EVALUATE;
@@ -292,6 +341,8 @@ ipcMain.on('interrupt-subprocesses',(event)=>{
 );
 
 function executeCommand(inputContent,scriptType){
+
+    console.log(inputContent);
   // 确定文件扩展名
             let fileExtension;
             let shell;
@@ -331,6 +382,9 @@ function executeCommand(inputContent,scriptType){
                     shell='cmd';
                     break;
                 default:
+                    if(isExecuteMode){
+                        shell='powershell';
+                    }
                     sendRequest("dc "+scriptType+'是不支持的脚本类型，支持bash、python、javaScript、batch');
                     appendMessage(`AI回复了不支持的脚本类型:${scriptType}，正在返回ai重新生成`, false);
                     userInputplaceHolder("AI重新生成命令中…");
@@ -355,6 +409,25 @@ function executeCommand(inputContent,scriptType){
     // 执行脚本并同步获取输出
     const { exec } = require('child_process');
     let proc = exec(fileName,{shell:shell},(error, stdout, stderr) => {
+        if(isExecuteMode){//自反的输出
+            if (error) {
+                appendMessage(`执行错误: ${error.message}`,false);
+                userInputplaceHolder("执行失败，返回错误信息给AI");
+                
+                // 如果有错误输出，将 stderr 作为错误消息
+                if (stderr) {
+                    appendMessage(`错误输出: ${stderr}`,false);
+                    sendRequest('self 执行失败\n'+userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" + stderr.toString()); // 发送标准错误输出给 AI
+                } else {
+                    sendRequest('self 执行失败\n' +userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" +error.message); // 发送错误消息给 AI
+                }
+            } else {
+                appendMessage(`本步骤命令执行成功\n${inputContent}`, false);
+                sendRequest('ch self 执行成功\n' +userAsk+"\n上一次命令：\n"+inputContent+"命令输出：\n"+stdout); 
+            }
+            isExecuteMode=false;
+            return;
+        }
             if (error) {
                 appendMessage(`执行错误: ${error.message}`,false);
                 userInputplaceHolder("执行失败，返回错误信息给AI");
@@ -367,7 +440,7 @@ function executeCommand(inputContent,scriptType){
                     sendRequest('dc ' +inputContent+ error.message); // 发送错误消息给 AI
                 }
             } else {
-                appendMessage(`命令执行完成\n输出:${stdout}`, false);
+                appendMessage(`stdout:${stdout}`, false);
                 // 恢复用户输入框状态
                 userInputplaceHolder("输入内容…"); // 恢复提示
             }
