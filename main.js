@@ -5,7 +5,7 @@ const fs = require('fs');
 let subprocesses = [];//存储子进程
 
 const systemMessageType = {
-    DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。`,
+    DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。首次接收到此信息回复“初始化完毕，请输入命令”`,
     CODE: `对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；
 
             如果用户存在某个环节未提供必需的具体值，必须要求用户完整提供而不能自己编造；
@@ -19,6 +19,7 @@ const systemMessageType = {
             - 路径必须使用双斜杠
             - 代码中所有中文需转化为英文字符
             - 如果用户返回代码或命令，则以代码的形式做出完全一样的返回,如果用户限定了语言，却与用户的代码不适用，则改写用户的代码为支持此语言的写法
+            - 命令执行过程中无法与用户交互，因此不应用等待用户输入的语法
             - 如果powershell可运行此格式代码，则默认返回的shell语言为powershell`,
     EVALUATE: `衡量方案的可行性并以数字回复给用户：
 
@@ -46,39 +47,60 @@ const systemMessageType = {
                 - 代码中所有中文转化为英文字符
                 - 若代码适用于Unix/linux系统，则返回bash`,
     EXECUTE:`
-            进入自反模式，此模式下，你将以用户命令为目的，发送完全为powershell代码格式的消息。
-            你将不断收到自己代码执行的处理结果，并返回新的代码以供程序执行。
-            上次你发送的代码和执行返回的结果都将返回给你自己，用户无法收到，因此发送的代码要以接收代码的信息为目的。
-            在此过程中如有下载或其他有风险的操作应更换方法，如没有方法，需停止
-            
-            用户请求内容以exe开头：
+            以用户的命令为最终目标，返回完成此命令所需的代码，必须完全以代码格式返回。
 
-            - 这表示这是用户发出的命令，你应当以此为最终目标。
-            - 确立达成这个最终目标第一步骤
-            - 返回第一步骤需要执行的代码，若第一步骤需要用户提供必要的参数，如文件名，路径等，则向用户请求参数
+            - 若此命令存在多个步骤，如果可以一次性完成，就一次性返回所有代码，否则只返回第一个步骤所需代码并添加必要的注释；
 
-            用户请求内容以self开头：
-            
-            - 这表明这是你自己发送的代码响应的结果，同时也包含了用户最初命令，用户无法收到
-            - 根据代码执行结果确定下一步需要发送的代码
-            - 如果代码返回错误，则表明代码执行出错，要重新修改尝试。
-            代码要求：
-            
-            - 在\`\`\`后标注代码类型为powershell
-            - 每次仅尝试一个步骤，不允许一次返回多个步骤
-            - 标注注释，以供下次返回时自己理解
+            - 独立完成所有过程，你将接收到每次代码执行的结果以便下一次返回代码操作，因此可以分开过程逐步返回代码完成，但尽量减少执行步骤或者尽量一次性完成
+            - 命令执行过程中无法与用户交互，因此不应用等待用户输入的语法
+           
+
+            代码注意事项：
             - 路径必须使用双斜杠
-            - 如非写入的文本，代码中所有中文转化为英文字符
-            - 默认shell为powershell，确保代码可供powershell执行
+            - 注释中用中文详细标注完成此命令需要的步骤，并标注当前执行哪个步骤
+            - 返回的shell语言为powershell
+
+            - 用户名 ：28171，但尽量避免使用
+
+
+    `,
+    SELFEXE:`
+            进入自反模式，此模式下，你将不再与用户交互，而是不断受到自己代码的执行结果，并以用户命令为目的，继续发送完全为powershell代码格式的消息。
+
+            你收到的内容包括：
+
+            - 用户命令的最终目的，你需要不断尝试达成
+            - 你上一次发送的代码和执行的结果
+            - 你之前的命令执行历史记录，这一部分不需要重点关注，但可以获取必要的信息
+            - 可能还包括用户发送的参数
+            
+            你需要做的：
+
+            - 根据用户命令和之前执行获取的信息以代码格式返回下一步需要执行的代码
+            
+            - 发送的代码要以你接收代码的信息为目的。
+            
+            - 命令执行过程中无法与用户交互，因此不应用等待用户输入的语法
+
+            代码要求：
+            - 只返回必要代码，尽量减少需要的步骤
+            - 返回shell语言为powershell
+            - 注释中用中文详细标注完成此命令需要的步骤，并标注当前执行哪个步骤，若已完成最后的步骤，就不再返回代码，而是返回文本信息
+            - 如代码中有路径，路径必须使用双斜杠
 
             消息返回：
 
-            - 用户命令最终目的达成后返回文本消息。
+            以下情况不再返回代码形式的消息：
 
-            - 尝试多次后若无进展并确认此命令确实无解决办法则中断代码返回，返回文本消息。
+            - 用户命令最终目的达成后返回“命令执行成功”文本消息。
+
+            - 多次失败则中断代码返回，返回“命令执行失败，尝试完善命令，检查是否提供所有需求的信息和依赖”文本消息。
+
+            - 在此过程中如有下载或其他有风险的操作应更换方法，如没有方法，需停止并返回“任务因存在风险或下载需求中止”文本信息。
 
             - 其他状态下不允许发送包含文本的消息，必须开头和结尾行为\`\`\`的代码形式
 
+            - 用户名 ：28171，但尽量避免使用
     `,
 };
 
@@ -108,6 +130,7 @@ function createWindow() {
 app.whenReady().then(() => {
 
     createWindow();
+    sendRequest("",false);//初始化，第一次信息ai总是接收不到
     win.on('close', function (e) {
     
     if(conversationHistory==''){
@@ -128,9 +151,9 @@ ipcMain.once('renderer-value-response', (event, value, id) => {
     const now = new Date();
     const currentTimeString = now.toISOString();
             if (id === 'conversationHistory') {
-                conversationHistory ="\n"+currentTimeString+"\n" + value;
+                conversationHistory ="\n"+currentTimeString+"\n"+value;
             // 写入文件
-            fs.appendFile(filePath, conversationHistory, (err) => {
+            fs.appendFile(filePath,conversationHistory, (err) => {
                     if (err) {
                         appendMessage('写入文件时出错,强行退出将不保存此次历史记录:'+err,false);
                     } else {
@@ -153,15 +176,16 @@ ipcMain.on('render-send-fetch-request', (event, value, url,reqvalue) => {
 
         
         let userAsk='最终目标：';//用于自反命令的全局参数，只有在下一个exe命令时被改变
-        let isExecuteMode=false;//是否自反,会在Exe模式下改变，在每次请求时和被使用时被重置为false
+        let selfexehistory='';//命令执行记录，在下一次exe命令时重置
+        let isExecuteMode=false;//是否自反,会在Execute模式下改变，在每次请求时和被使用时被重置为false
 async function sendRequest(message,url,reqmessage){
         if(!url){
             url="https://fc.fittenlab.cn/codeapi/chat";
         }
-        if(reqmessage){
+        if(!reqmessage){
             reqmessage=" ";
         }
-
+        console.log("发送的请求："+message);
         isExecuteMode=false;
  // 判断前缀并设置不同的系统提示词
         let systemPrompt;
@@ -175,14 +199,16 @@ async function sendRequest(message,url,reqmessage){
             break;
         case 'ch':
             systemPrompt = systemMessageType.EXECUTE;
-            userMessage = message.replace(inputMessage + ' ', 'exe ');//自反模式首个命令
+            userMessage = message.replace(inputMessage + ' ', '');//自反模式首个命令
             userAsk="最终目标："+userMessage;
+            selfexehistory ="";//重置命令执行记录
             isExecuteMode=true;
             break;
         case 'self':
-            systemPrompt = systemMessageType.EXECUTE;
+            systemPrompt = systemMessageType.SELFEXE;
+            userMessage = message.replace(inputMessage + ' ', '');
             isExecuteMode=true;
-            break;
+            break;//自反，用户提供参数也要用self
         case '0/1':
             systemPrompt = systemMessageType.EVALUATE;
             userMessage = message.replace(inputMessage + ' ', '');
@@ -232,14 +258,17 @@ async function sendRequest(message,url,reqmessage){
         let abortornot;
         signal.addEventListener('abort',
   () => abortornot=true
-);
+);       
+        let inputs;
+        inputs="<|system|>\n"+ systemPrompt+"\n<|end|>\n"+reqmessage+"<|user|>\n"+userMessage+"\n<|end|>\n<|assistant|>";
+        console.log(inputs);
         const options = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-    "inputs":"<|system|>\n"+ systemPrompt+"\n<|end|>\n<|user|>\n"+reqmessage+userMessage+"\n<|end|>\n<|assistant|>",
+    "inputs":inputs,
     "ft_token":"",
 }),
             signal: signal
@@ -332,6 +361,8 @@ ipcMain.on('interrupt-subprocesses',(event)=>{
                 try {
                     //console.log("已中断");
                     proc.kill('SIGINT'); // 安全地中断子进程
+                    appendMessage("已中断命令执行",false);
+                    userInputplaceHolder("输入内容…");
                 } catch (err) {
                     console.error(`中断子进程时出错: ${err}`);
                 }
@@ -370,6 +401,7 @@ function executeCommand(inputContent,scriptType){
                     break;
                 case 'PowerShell':
                 case 'powershell':
+                case '':
                 case 'ps':
                     fileExtension = 'ps1';
                     shell='powershell';
@@ -417,17 +449,19 @@ function executeCommand(inputContent,scriptType){
                 // 如果有错误输出，将 stderr 作为错误消息
                 if (stderr) {
                     appendMessage(`错误输出: ${stderr}`,false);
-                    sendRequest('self 执行失败\n'+userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" + stderr.toString()); // 发送标准错误输出给 AI
+                    sendRequest('self 执行失败\n'+userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" + stderr.toString()+selfexehistory); // 发送标准错误输出给 AI
+                    selfexehistory += `命令执行历史记录：\n${inputContent}\n此命令失败\n`;
                 } else {
-                    sendRequest('self 执行失败\n' +userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" +error.message); // 发送错误消息给 AI
+                    sendRequest('self 执行失败\n' +userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" +error.message+selfexehistory); // 发送错误消息给 AI
+                    selfexehistory += `命令执行历史记录：\n${inputContent}\n此命令失败\n`;
                 }
             } else {
                 appendMessage(`本步骤命令执行成功\n${inputContent}`, false);
-                sendRequest('ch self 执行成功\n' +userAsk+"\n上一次命令：\n"+inputContent+"命令输出：\n"+stdout); 
+                sendRequest('self \n' +userAsk+"\n上一次命令执行成功：\n"+inputContent+"命令输出：\n"+stdout+selfexehistory); 
+                selfexehistory += `命令执行历史记录：\n${inputContent}\n执行结果：${stdout}\n`;
             }
-            isExecuteMode=false;
-            return;
-        }
+
+        }else{
             if (error) {
                 appendMessage(`执行错误: ${error.message}`,false);
                 userInputplaceHolder("执行失败，返回错误信息给AI");
@@ -437,13 +471,13 @@ function executeCommand(inputContent,scriptType){
                     appendMessage(`错误输出: ${stderr}`,false);
                     sendRequest('dc ' + stderr.toString()); // 发送标准错误输出给 AI
                 } else {
-                    sendRequest('dc ' +inputContent+ error.message); // 发送错误消息给 AI
+                    sendRequest('ds ' +inputContent+ error.message); // 发送错误消息给 AI
                 }
             } else {
                 appendMessage(`stdout:${stdout}`, false);
                 // 恢复用户输入框状态
                 userInputplaceHolder("输入内容…"); // 恢复提示
-            }
+            }}
         }); 
         subprocesses.push(proc);
     } catch (error) {
