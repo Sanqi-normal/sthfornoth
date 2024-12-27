@@ -5,6 +5,7 @@ const userInput = document.getElementById('userInput');
 const sendButton = document.getElementById('sendButton');
 const urlInput = document.getElementById('urlInput');
 const defaultUrl = 'https://fc.fittenlab.cn/codeapi/chat';
+const modeId=document.getElementById('comboBox');
 let conversationHistory = " "; // 历史对话记录
 let history = []; // 存储用户命令历史
 let historyIndex = -1; // 当前历史索引
@@ -98,7 +99,8 @@ userInput.addEventListener('keydown', function (event) {
 });
 
 function sendMessage() {
-    const message = userInput.value;
+
+    const message =modeId.value+ userInput.value;
     if (message) {
         appendMessage(`${message}`, true);
         userInput.value = ''; // 清空输入框
