@@ -5,7 +5,7 @@ const fs = require('fs');
 let subprocesses = [];//存储子进程
 
 const systemMessageType = {
-    DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。首次接收到此信息回复“初始化完毕，请输入命令”`,
+    DEFAULT: `请一般情况下使用中文回答。对用户任何回答不允许以输出代码的格式，只以输出文本的格式回复。首次接收到此信息回复“初始化完毕，请选择模式或输入命令”`,
     CODE: `对用户的要求以代码的形式回应，每份代码前标注代码的语言，保证每次回复正确；
 
             如果用户存在某个环节未提供必需的具体值，必须要求用户完整提供而不能自己编造；
@@ -79,7 +79,7 @@ const systemMessageType = {
             - 根据用户命令和之前执行获取的信息以代码格式返回下一步需要执行的代码
             
             - 发送的代码要以你接收代码的信息为目的。
-            
+
             - 命令执行过程中无法与用户交互，因此不应用等待用户输入的语法
 
             代码要求：
@@ -304,9 +304,10 @@ async function sendRequest(message,url,reqmessage){
         }
 
         const aiResponse = parseJsonObjects(jsonArray);
-        
+        console.log(aiResponse);
         // 检查首行和末行是否为 ```
-        const responseLines = aiResponse.split('\n');
+        let responseLines = aiResponse.split('\n');
+        responseLines = responseLines.filter(line => line.trim() !== '' && !line.trim().startsWith('#'));
         const firstLine = responseLines[0].trim();
         const lastLine = responseLines[responseLines.length - 1].trim();
         if (firstLine.startsWith('```') && lastLine.startsWith('```')) {
@@ -372,8 +373,6 @@ ipcMain.on('interrupt-subprocesses',(event)=>{
 );
 
 function executeCommand(inputContent,scriptType){
-
-    console.log(inputContent);
   // 确定文件扩展名
             let fileExtension;
             let shell;
@@ -410,11 +409,11 @@ function executeCommand(inputContent,scriptType){
                 case 'Batch':
                 case 'batch':
                     fileExtension = 'bat';
-                    inputContent += "\necho 'waiting'\npause\nexit";
                     shell='cmd';
                     break;
                 default:
                     if(isExecuteMode){
+                        fileExtension = 'ps1';
                         shell='powershell';
                     }
                     sendRequest("dc "+scriptType+'是不支持的脚本类型，支持bash、python、javaScript、batch');
@@ -436,53 +435,54 @@ function executeCommand(inputContent,scriptType){
            
 
 
-     try{   
+    
         userInputplaceHolder(`命令执行中，此次执行的shell为：${shell}`);
+    
+        console.log(inputContent);
     // 执行脚本并同步获取输出
-    const { exec } = require('child_process');
-    let proc = exec(fileName,{shell:shell},(error, stdout, stderr) => {
-        if(isExecuteMode){//自反的输出
-            if (error) {
-                appendMessage(`执行错误: ${error.message}`,false);
-                userInputplaceHolder("执行失败，返回错误信息给AI");
-                
-                // 如果有错误输出，将 stderr 作为错误消息
-                if (stderr) {
-                    appendMessage(`错误输出: ${stderr}`,false);
-                    sendRequest('self 执行失败\n'+userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" + stderr.toString()+selfexehistory); // 发送标准错误输出给 AI
-                    selfexehistory += `命令执行历史记录：\n${inputContent}\n此命令失败\n`;
-                } else {
-                    sendRequest('self 执行失败\n' +userAsk+"\n上一次命令：\n"+inputContent+"\n错误：" +error.message+selfexehistory); // 发送错误消息给 AI
-                    selfexehistory += `命令执行历史记录：\n${inputContent}\n此命令失败\n`;
-                }
-            } else {
-                appendMessage(`本步骤命令执行成功\n${inputContent}`, false);
-                sendRequest('self \n' +userAsk+"\n上一次命令执行成功：\n"+inputContent+"命令输出：\n"+stdout+selfexehistory); 
-                selfexehistory += `命令执行历史记录：\n${inputContent}\n执行结果：${stdout}\n`;
-            }
+try {
+    const { spawn } = require('child_process');
+    let proc = spawn(fileName, { shell: shell });
 
-        }else{
-            if (error) {
-                appendMessage(`执行错误: ${error.message}`,false);
-                userInputplaceHolder("执行失败，返回错误信息给AI");
-                
-                // 如果有错误输出，将 stderr 作为错误消息
-                if (stderr) {
-                    appendMessage(`错误输出: ${stderr}`,false);
-                    sendRequest('dc ' + stderr.toString()); // 发送标准错误输出给 AI
-                } else {
-                    sendRequest('ds ' +inputContent+ error.message); // 发送错误消息给 AI
-                }
-            } else {
-                appendMessage(`stdout:${stdout}`, false);
-                // 恢复用户输入框状态
-                userInputplaceHolder("输入内容…"); // 恢复提示
-            }}
-        }); 
-        subprocesses.push(proc);
-    } catch (error) {
-        console.error(`捕获到异常: ${error.message}`);
-        userInputplaceHolder("捕获到异常，返回错误信息给AI");
-        sendRequest('ds ' + error.message); // 发送错误消息给 AI
-    }
+    // 处理标准输出
+    proc.stdout.on('data', (data) => {
+        const stdout = data.toString();
+        if (isExecuteMode) { // 自反的输出
+            appendMessage(`本步骤命令执行成功\n${inputContent}`, false);
+            sendRequest('self \n' + userAsk + "\n上一次命令执行成功：\n" + inputContent + "命令输出：\n" + stdout + selfexehistory);
+            selfexehistory += `命令执行历史记录：\n${inputContent}\n执行结果：${stdout}\n`;
+        } else {
+            appendMessage(`stdout: ${stdout}`, false);
+            userInputplaceHolder("输入内容…"); // 恢复提示
+        }
+    });
+
+    // 处理标准错误输出
+    proc.stderr.on('data', (data) => {
+        const stderr = data.toString();
+        appendMessage(`错误输出: ${stderr}`, false);
+        
+        if (isExecuteMode) {
+            sendRequest('self 执行失败\n' + userAsk + "\n上一次命令：\n" + inputContent + "\n错误：" + stderr + selfexehistory);
+            selfexehistory += `命令执行历史记录：\n${inputContent}\n此命令失败\n`;
+        } else {
+            sendRequest('ds ' + stderr); // 发送标准错误输出给 AI
+        }
+    });
+
+    // 处理子进程退出事件
+    proc.on('close', (code) => {
+        if (code !== 0) {
+            appendMessage(`执行错误: 子进程以状态码 ${code} 退出`, false);
+            userInputplaceHolder("执行失败，返回错误信息给AI");
+            sendRequest('ds ' + inputContent + ` 执行失败，状态码: ${code}`); // 发送错误消息给 AI
+        }
+    });
+
+    subprocesses.push(proc);
+} catch (error) {
+    console.error(`捕获到异常: ${error.message}`);
+    userInputplaceHolder("捕获到异常，返回错误信息给AI");
+    sendRequest('ds ' + error.message); // 发送错误消息给 AI
+}
 }
