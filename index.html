@@ -4,13 +4,21 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://fc.fittenlab.cn;">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI聊天应用</title>
+    <title>Alice chat</title>
     <link rel="stylesheet" href='styles.css'>
 </head>
 <body>
     <label for="urlInput">请输入 URL (留空则使用默认值):</label>
 <input type="text" id="urlInput" placeholder="https://fc.fittenlab.cn/codeapi/chat" />
-
+<label for="comboBox">模式选择:</label>
+<select id="comboBox">
+    <option value="">Default</option>
+    <option value="Alice ">Alice</option>
+    <option value="cmd ">cmd</option>
+    <option value="bash ">bash</option>
+    <option value="ps ">powershell</option>
+    <option value="ch ">selfexe（慎选）</option>
+</select>
     <div id="chatBox"></div>
     <input type="text" id="userInput" placeholder="输入内容..." />
     <button id="sendButton">发送</button>
