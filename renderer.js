@@ -20,15 +20,43 @@ function loadHistory(filePath) {
         const data = fs.readFileSync(filePath, 'utf8');
         const lines = data.split('\n').filter(line => line.trim() !== '');
         const commands = [];
+const processedCommands = new Set(); // 使用Set来存储已经处理过的命令
 
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].startsWith('用户先前询问或命令')) {
-                const commandLine = lines[i].split(': ')[1];
-                if (commandLine) {
-                    commands.push(commandLine.trim());
+for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('<|user|>')) {
+        const startIndex = lines[i].indexOf('<|user|>') + '<|user|>'.length;
+        let commandLine = lines[i].substring(startIndex);
+        let endIndex = commandLine.indexOf('<|end|>');
+        
+        if (endIndex !== -1) {
+            commandLine = commandLine.substring(0, endIndex).trim();
+            // 检查命令行是否已存在
+            if (!processedCommands.has(commandLine)) {
+                commands.push(commandLine);
+                processedCommands.add(commandLine); // 添加到已处理集合
+            }
+        } else {
+            let tempCommand = commandLine;
+            for (let j = i + 1; j < lines.length; j++) {
+                endIndex = lines[j].indexOf('<|end|>');
+                if (endIndex !== -1) {
+                    tempCommand += lines[j].substring(0, endIndex).trim();
+                    i = j; // 更新i以跳过已经处理的行
+                    break;
+                } else {
+                    tempCommand += lines[j];
                 }
             }
+            tempCommand = tempCommand.trim();
+            // 检查命令行是否已存在
+            if (!processedCommands.has(tempCommand)) {
+                commands.push(tempCommand);
+                processedCommands.add(tempCommand); // 添加到已处理集合
+            }
         }
+    }
+}
+
         console.log("历史命令读取完毕");
         return commands.reverse();
     } catch (err) {
@@ -53,10 +81,7 @@ userInput.addEventListener('keydown', function (event) {
     if (event.key === 'ArrowUp') {
         if(!history[0]){
             history = loadHistory(historyFilePath);
-        }else{
-            console.log(history[0]);
         }
-
         if (historyIndex < history.length - 1) {
             historyIndex++; // 增加索引
             userInput.value = history[historyIndex]; // 更新输入框内容
@@ -75,12 +100,10 @@ userInput.addEventListener('keydown', function (event) {
 function sendMessage() {
     const message = userInput.value;
     if (message) {
-        let requestmessage;
         appendMessage(`${message}`, true);
         userInput.value = ''; // 清空输入框
-        requestmessage=conversationHistory+"\n用户此次输入:";
-        sendRequest(requestmessage,message); // 发送请求
-        conversationHistory += `用户先前询问或命令: ${message}\n`;
+        sendRequest(conversationHistory,message); // 发送请求
+        conversationHistory += `<|user|>\n ${message}\n<|end|>\n`;
         
         // 将当前消息添加到历史记录
         history.unshift(message); // 添加到历史记录顶部
@@ -102,11 +125,11 @@ function appendMessage(message, isUser) {
 }
 // 发送请求到API
 
- function sendRequest(requestmessage,message) {
+ function sendRequest(historymessgae,message) {
              // 使用用户输入的 URL，如果没有输入则使用默认的 URL
         const url = urlInput.value.trim() || defaultUrl;
 
-        ipcRenderer.send('render-send-fetch-request', message,url,requestmessage);
+        ipcRenderer.send('render-send-fetch-request', message,url,historymessgae);
         //console.log("发送fetch请求");
     }
            
@@ -135,7 +158,7 @@ ipcRenderer.on('main-holder-text-change',  (event,arg) => {
 ipcRenderer.on('main-append-message',  (event,arg) => {
     appendMessage(arg.aiResponse,arg.value);
     //console.log("airesponse");
-    conversationHistory+=("AI回复或执行结果："+ arg.aiResponse+"\n");
+    conversationHistory+=("<|assistant|>\n"+ arg.aiResponse+"\n<|end|>\n");
 });
 //中断子进程
 document.addEventListener('keydown', (event) => {
