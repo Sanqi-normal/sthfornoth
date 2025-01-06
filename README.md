@@ -1,7 +1,7 @@
 ## Alice
-<div style="font-size:smaller">
+<div style="font-size:smaller"  word-wrap: break-word; overflow-wrap: break-word;>
 桌面程序项目源码
-
+<br/>
 用户输入说明：
 在输入前加入词组前缀可进入不同模式
 Alice 命令执行模式，可发送代码
