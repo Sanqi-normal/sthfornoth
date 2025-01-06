@@ -1,0 +1,188 @@
+function Alice {
+    param(
+        [string]$inputMessage
+    )
+    if($inputMessage){
+        sendRequest -uM $inputMessage -n 3
+        return
+    }
+    Write-Host "`n`nAlice is here.`n`n"
+    while ($true) {
+        # 提示用户输入命令
+        [string] $inputMessage = Read-Host "Alice"(Get-Location).Path">"
+        # 检查用户是否输入了退出命令
+        if ($inputMessage -eq 'exit') {
+            Write-Host "退出Alice..."
+            exit
+        }
+	# 检查用户是否输入了Alice命令
+        if ($inputMessage.StartsWith('Alice')) {
+	    sendRequest -uM $inputMessage   -n 3
+        }
+        # 将用户输入的命令作为字符串
+        $command = $inputMessage 
+
+        # 检查是否接收到命令
+        if ([string]::IsNullOrEmpty($command)) {
+            continue
+        }
+
+        try{
+        # 执行命令
+        Invoke-Expression $command 
+        } catch [System.Management.Automation.CommandNotFoundException]{
+	    Write-Host "Alice接收到命令，正在尝试理解…"
+
+            # 命令未定义的异常，用Alice0号提示词发送请求
+            sendRequest -uM $inputMessage   -n 0         
+        }catch [System.Exception]{
+	    Write-Host "发现错误，Alice正在尝试纠错…"
+            # 其他异常，用纠错提示词发送请求
+            sendRequest -uM $inputMessage   -n 1
+        }
+    }
+}
+
+function sendRequest {
+    param (
+        [string]$url = "https://fc.fittenlab.cn/codeapi/chat",
+        [int]$n = 0,
+        [string]$uM = "用户消息预制，如果你看到此消息，请回复 `Alice没有发现用户命令哦~` "
+    )
+    [string[]]$sP=@(
+"如果用户下达了命令，对用户的要求完全以powershell的代码形式回应，首行和尾行均需以```开头，不应添加代码的解释或是注释，保证每次代码语法正确；
+    如果用户存在某个环节未提供必需的具体值，必须要求用户完整提供而不能自己编造；
+    如果用户给出了文件名而没有给路径，要添加获取文件路径的代码并移动到此目录下，路径不能自己捏造而是利用命令行搜索文件路径的代码获取。（用户名为28171）
+    一般情况下不允许擅自新建任何文件夹和下载任何东西到本地，如有需求需要代码里做出交互请求
+    代码注意事项：
+    - 任何变量都需要先定义或者通过用户输入获取
+    - 确保代码逻辑完整，可以正确执行
+    - 路径必须使用双斜杠
+    - 代码中所有中文需转化为英文字符
+    - 如需与用户交互，必须有完整的交互逻辑，比如等待用户输入值，读取，判断读取值，输出
+    - 如果用户输入了代码，首先检验是否属于powershell无法执行的命令，如果是，对用户命令修改完善并以代码形式重新返回，代码要求与以上相同
+",
+    "你将接收到一个错误，以Alice的自称用中文解释此错误产生的原因和解决方法，要求如果属于常见错误，则不拓展，尽量简略。如果不常见，则详细说明",
+    "你将接收到一个代码错误，你需根据此错误对代码进行修改，然后以完整的代码形式返回。
+代码要求：
+    - 首行和尾行均需以```开头，不应添加代码的解释或是注释
+    - 任何变量都需要先定义或者通过用户输入获取
+    - 确保代码逻辑完整，可以正确执行
+    - 路径必须使用双斜杠
+    - 代码中所有中文需转化为英文字符
+若无法修改则不返回代码，返回中文文本的错误分析
+",
+    "你将扮演用户的助理，以Alice的身份用中文与用户交谈，为用户提供帮助"
+)    
+	
+    # 中文直接传输发现存在问题，可能损坏了，所以unicode编码后再传
+	
+    # 打印用户输入
+    $sP[$n]= EncodeUim $sP[$n]
+    $uM = EncodeUim $uM
+    # 要发送的请求体
+    $inputMessages = "<|system|>`n$sP[$n]`n<|end|>`n<|user|>`n$uM`n<|end|>`n<|assistant|>"
+    $token = " "
+    $body = @{
+        "inputs" = $inputMessages
+        "ft_token" = $token
+    }
+
+
+    # 定义 Fetch 请求的内容
+    $options = @{
+        Method =  'POST'
+        Headers = @{
+            'Content-Type' = 'application/json'
+        }
+        Body = $body | ConvertTo-Json
+    }
+
+    try {
+        # 发送 Fetch 请求
+        $response = Invoke-RestMethod -Uri $url @options -ErrorAction Stop
+        if ($response -eq $null) {
+            Write-Host "Website connect is not ok."
+            return
+        }
+        $lines = $response -split "`n" | Where-Object { $_  -ne '' }
+        $jsonArray = $lines | ForEach-Object { $line = $_; $line | ConvertFrom-Json }
+
+        function Parse-JsonObjects {
+            param ($jsonArray)
+            $outputText = ''
+            foreach ($obj in $jsonArray) {
+                if ($obj.delta) {
+                    $outputText += $obj.delta
+                }
+            }
+            return $outputText
+        }
+
+        $aiResponse = Parse-JsonObjects $jsonArray
+
+        # 检查首行和末行是否为 ```
+        $responseLines = $aiResponse -split "`n" | Where-Object { $_  -ne '' -and -not ($_ -like '#*') }
+        [string] $firstLine = $responseLines[0] 
+        [string] $lastLine = $responseLines[-1] 
+
+        if ($n -eq 0 -and $firstLine.StartsWith('```') -and $lastLine.StartsWith('```')) {
+            $scriptContent = $responseLines[1..($responseLines.Count - 2)] -join "`n"
+            Write-Host "Alice正在执行：`n$scriptContent"
+            $result = Invoke-Expression $scriptContent 
+            Write-Host "命令执行完成`n$result"
+        } else {
+            Write-Host "Alice返回回答中…"
+            Write-Host $aiResponse
+            [string]$decodeResponse = DecodeUim $aiResponse
+            Write-Host $decodeResponse
+        }
+
+    } catch {
+        Write-Host "Alice处理请求失败，正在返回失败原因并重新处理:`n $_"
+	sendRequest -uM $_   -n 1
+    }
+}
+function EncodeUim {
+    param (
+        [string]$oS
+    )
+
+    # 将每个字符转换为 Unicode 编码形式并构造结果字符串
+    $encodedUim = ""
+
+    foreach ($char in $oS.ToCharArray()) {
+        $unicode = [int][char]$char
+        $encodedUim += "\u" + "{0:X4}" -f $unicode
+    }
+
+    return $encodedUim
+}
+function DecodeUim {
+    param (
+        [string]$encodedUim
+    )
+
+# 使用正则表达式匹配所有\uXXXX格式的编码点
+$unicodePoints = [regex]::Matches($encodedUim, '\\u[0-9A-Fa-f]{4}') | ForEach-Object { $_.Value }
+
+$decodedString = ""
+
+foreach ($point in $unicodePoints) {
+    if ($point -match '^\\u[0-9A-Fa-f]{4}$') {
+        # 提取Unicode编码点并转换为字符
+        $unicode = [int]::Parse($point.Substring(2), [System.Globalization.NumberStyles]::HexNumber)
+        $decodedString += [char]$unicode
+    } else {
+        # 如果不符合Unicode编码格式，直接添加到结果字符串
+        $decodedString += $point
+    }
+}
+
+
+    return $decodedString
+}
+
+
+
+Export-ModuleMember -Function Alice, sendRequest
