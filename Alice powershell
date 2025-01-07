@@ -1,23 +1,41 @@
+# 模块名称：Alice
+# [功能] 自然语言代替程序语言执行命令 附带纠错、历史对话等功能
+# 最后更新时间：2025-01-07
+# 作者：叁七
+[string]$global:historyMessage # 全局变量，用于存储历史消息
 function Alice {
     param(
-        [string]$inputMessage
+        [string]$inputMessage,
+        [switch]$h
     )
+    if($h){
+        echohelp
+    }
     if($inputMessage){
+	if($inputMessage -eq 'help'){
+        echohelp 
+    } else{
         sendRequest -uM $inputMessage -n 3
         return
     }
-    Write-Host "`n`nAlice is here.`n`n"
+}
+Write-Host "--------------" -ForegroundColor DarkRed
+Write-Host "`n`nAlice is here.`n`n" -ForegroundColor Green
+Write-Host "--------------" -ForegroundColor DarkRed
+
+    # 进入Alice模式
     while ($true) {
         # 提示用户输入命令
         [string] $inputMessage = Read-Host "Alice"(Get-Location).Path">"
         # 检查用户是否输入了退出命令
         if ($inputMessage -eq 'exit') {
-            Write-Host "退出Alice..."
-            exit
+            Write-Host "`n退出Alice...`n" -ForegroundColor Green
+            Write-Host "Have a nice day~" -ForegroundColor Yellow
+            break
         }
-	# 检查用户是否输入了Alice命令
-        if ($inputMessage.StartsWith('Alice')) {
-	    sendRequest -uM $inputMessage   -n 3
+        if ($inputMessage -eq 'help') {
+            echohelp
+            continue
         }
         # 将用户输入的命令作为字符串
         $command = $inputMessage 
@@ -43,6 +61,16 @@ function Alice {
     }
 }
 
+function echohelp {
+    Write-Host "#####################" -ForegroundColor Blue
+    Write-Host "`n" -NoNewline
+    Write-Host "Alice逻辑：" -ForegroundColor Green
+    Write-Host "`n进入Alice模式直接输入请求`n请求powershell可执行则直接执行，执行失败转纠错，未知命令转ai请求。`n" -NoNewline
+    Write-Host "`n内置请求函数：" -ForegroundColor Green
+    Write-Host "`nsendRequest -uM [inputMessage] -n [num]`n[inputMessage]请求内容`n[num]=0 命令 `n[num]=1 纠错 `n[num]=2 重新返回 `n[num]=3 对话 `n"
+    Write-Host "#####################" -ForegroundColor Blue
+    
+}
 function sendRequest {
     param (
         [string]$url = "https://fc.fittenlab.cn/codeapi/chat",
@@ -74,21 +102,25 @@ function sendRequest {
 ",
     "你将扮演用户的助理，以Alice的身份用中文与用户交谈，为用户提供帮助"
 )    
-	
-    # 中文直接传输发现存在问题，可能损坏了，所以unicode编码后再传
-	
-    # 打印用户输入
+	# 中文直接传输发现存在问题，可能损坏了，所以unicode编码后再传
+
+
+    # unicode编码
     $sP[$n]= EncodeUim $sP[$n]
     $uM = EncodeUim $uM
     # 要发送的请求体
-    $inputMessages = "<|system|>`n$sP[$n]`n<|end|>`n<|user|>`n$uM`n<|end|>`n<|assistant|>"
+    $inputMessages = "<|system|>`n$sP[$n]`n<|end|>`n$global:historyMessage<|user|>`n$uM`n<|end|>`n<|assistant|>"
     $token = " "
     $body = @{
         "inputs" = $inputMessages
         "ft_token" = $token
     }
 
-
+    # 记录在消息历史中
+    # 放在构造请求之后是避免上传请求时重复传入了当前命令
+    $uM = DecodeUim $uM
+    $global:historyMessage += "<|user|>`n$uM`n<|end|>`n"
+    echo $global:historyMessage
     # 定义 Fetch 请求的内容
     $options = @{
         Method =  'POST'
@@ -131,11 +163,13 @@ function sendRequest {
             Write-Host "Alice正在执行：`n$scriptContent"
             $result = Invoke-Expression $scriptContent 
             Write-Host "命令执行完成`n$result"
+            $global:historyMessage += "<|assistant|>`nAlice执行的命令：`n$scriptContent`n命令执行结果：`n$result`n<|end|>`n"
         } else {
             Write-Host "Alice返回回答中…"
             Write-Host $aiResponse
             [string]$decodeResponse = DecodeUim $aiResponse
             Write-Host $decodeResponse
+            $global:historyMessage += "<|assistant|>`nAlice返回回答：`n$aiResponse`n<|end|>`n"
         }
 
     } catch {
