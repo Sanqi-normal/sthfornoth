@@ -1,6 +1,6 @@
 body {
     font-family: Arial, sans-serif;
-    background: rgb(255, 241, 200) !important;
+    background: rgb(231, 231, 231) !important;
     margin: 0;
     padding: 0;
     overflow: hidden; /* 防止页面偏移 */
@@ -8,50 +8,71 @@ body {
 #chatBox {
     border: 1px solid #ccc;
     padding: 10px;
-    height: 350px;
+    height: 300px;
     overflow-y: auto;
-    background: rgb(255, 248, 227) !important;
+    /* background: rgb(255, 248, 227) !important; 注释掉背景颜色 */
     margin-bottom: 10px;
-    border-radius: 10px;
+    border-radius: 0px; /* 将圆角改为0px */
 }
 #userInput {
-    width: 85%;
+    width: 96%;
     padding: 10px;
-    border-radius: 10px;
+    border-radius: 0px; /* 将圆角改为0px */
 }
 
-#sendButton {
+#sendButton ,#clearButton {
     padding: 10px;
     cursor: pointer;
+    border-radius: 0px; /* 将圆角改为0px */
 }
-
+.information{
+    padding: 10px;
+    background-color: rgb(92, 146, 200);
+    color: rgb(231, 231, 231);
+}
 .user-message {
-    color: rgb(6, 33, 29);
+    color: rgb(37, 1, 1);
     text-align: left; /* 用户消息右对齐 */
     margin-left: 20px; /* 用户消息左侧留出一些空间 */
     padding: 5px 10px;
-    border-radius: 10px;
+    border-radius: 0px; /* 将圆角改为0px */
     display: block; /* 确保每条消息占一行 */
     clear: both; /* 清除浮动，确保消息按顺序显示 */
 }
 
 .ai-message {
-    background-color: rgb(239, 224, 224);
+    background-color: rgb(255, 255, 255);
     color: rgb(48, 25, 6);
     text-align: left; /* AI消息左对齐 */
     margin-right: 20px; /* AI消息右侧留出一些空间 */
     padding: 5px 10px;
-    border-radius: 10px;
+    border-radius: 0px; /* 将圆角改为0px */
     display: block; /* 确保每条消息占一行 */
     white-space: pre-wrap; /* 允许换行 */
     clear: both; /* 清除浮动，确保消息按顺序显示 */
 }
+.input-container {
+            position: relative;
+            buttom: 0;/*固定在最底端*/
+            display: inline-block;
+            width: 80%;
+        }
+.input-container input {
+            padding-right: 30px; /* 为图标留出空间 */
+            width: 100%; /* 确保输入框占满容器宽度 */
+        }
+.input-container icon {
+            position: absolute;
+            right: 10px; /* 图标距离输入框右侧的距离 */
+            top: 50%;
+            transform: translateY(-50%);
+        }
 #suggestions {
     border: 1px solid #ccc;
     max-height: 100px;
     overflow-y: hidden; /* 取消显示上下滑动条 */
     position: absolute;
-    background-color: white;
+    background-color: white; /* 注释掉背景颜色 */
     z-index: 10;
     display: none; /* 默认隐藏 */
     padding: 0; /* 去掉内边距 */
@@ -61,21 +82,24 @@ body {
     padding: 4px; /* 减小每行的内边距 */
     font-size: 12px; /* 减小字体 */
     cursor: pointer;
+    border-radius: 0px; /* 将圆角改为0px */
 }
 
 .suggestion-item:hover {
-    background-color: #f0f0f0;
+     background-color: #f0f0f0; 
 }
+
+/* 切换按钮的样式 */
 /* 切换按钮的样式 */
 .toggle-container {
-    display: flex;
+    display: none;
     align-items: center;
 }
 
 .toggle {
     width: 50px; /* 调整宽度 */
     height: 28px; /* 调整高度 */
-    background-color: rgb(221, 209, 172); /* 改为更柔和的背景色 */
+    background-color: rgb(200, 200, 200); /* 改为更柔和的背景色 */
     position: relative;
     border-radius: 14px; /* 适当调整圆角 */
     cursor: pointer;
@@ -96,9 +120,31 @@ body {
 }
 
 .toggle.active {
-    background-color: rgb(239, 224, 224) /* 更加鲜明的激活颜色 */
+    background-color: rgb(10, 10, 10) /* 更加鲜明的激活颜色 */
 }
 
 .toggle.active:before {
     transform: translateX(22px); /* 调整小圆点位置的位移以适应新的尺寸 */
 }
+.spin-icon {
+            width: 20px;
+            height: 20px;
+            border: 0px solid #ccc;
+            border-radius: 0%; /* 初始为方块 */
+            background-color: #3498db;
+            transition: border-radius 0.5s, border 0.5s; /* 添加过渡效果 */
+            transform: translate(20%, 20%); /* 调整元素的位置，使其中心与父容器的中心对齐 */
+        }
+
+.spin-icon.spin {
+            border: 5px solid #ccc;
+            border-top: 5px solid #3498db;
+            border-radius: 50%; /* 转换为圆形 */
+            animation: spin 1s linear infinite;
+            background-color: rgba(255, 255, 255, 0);
+            top: 4px;
+        }
+@keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }

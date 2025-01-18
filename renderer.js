@@ -3,6 +3,7 @@ const { ipcRenderer } = require('electron');
 const chatBox = document.getElementById('chatBox');
 const userInput = document.getElementById('userInput');
 const sendButton = document.getElementById('sendButton');
+const clearButton = document.getElementById('clearButton');
 const urlInput = document.getElementById('urlInput');
 const defaultUrl = 'https://fc.fittenlab.cn/codeapi/chat';
 const modeId=document.getElementById('comboBox');
@@ -69,6 +70,7 @@ for (let i = 0; i < lines.length; i++) {
 
 // 发送按钮点击事件
 sendButton.onclick = sendMessage;
+clearButton.onclick = clearMessage;
 
 // 回车发送消息事件
 userInput.addEventListener('keypress', function (event) {
@@ -111,6 +113,10 @@ function sendMessage() {
         history.unshift(message); // 添加到历史记录顶部
         historyIndex = -1; // 重置历史索引
     }
+}
+
+function clearMessage(){
+    ipcRenderer.send('render-send-reload-request',conversationHistory);
 }
 
 function appendMessage(message, isUser) {
@@ -274,3 +280,63 @@ function displaySuggestions(aiResponse) {
             this.classList.toggle('active'); // 切换按钮状态
             suggestions.style.display = 'none';
         });
+
+
+//语音识别
+// 创建 SpeechRecognition 对象
+const recognition = new webkitSpeechRecognition();
+recognition.lang = 'zh-CN'; // 设置识别语言为中文
+recognition.continuous = true; // 设置为连续识别
+recognition.interimResults = true; // 设置为返回中间结果
+
+let interimTranscript ; // 保存中间结果
+let inputTextbefore ;  
+// 图标点击事件
+document.getElementById('spinIcon').addEventListener('click', () => {
+    const spinIcon = document.getElementById('spinIcon');
+    spinIcon.classList.toggle('spin');
+    const isSpinning = spinIcon.classList.contains('spin');
+    if (isSpinning) {
+        recognition.start();
+        interimTranscript = ''; // 清空中间结果
+        inputTextbefore = document.getElementById('userInput').innerText;//保存输入框内容
+        console.log('开始语音识别...');
+
+    } else {
+        recognition.stop();
+        console.log('停止语音识别...');
+    }
+});
+
+// 识别结果事件
+recognition.onresult = (event) => {
+    const transcriptnow = event.results[event.results.length - 1][0].transcript;
+    document.getElementById('userInput').innerText = inputTextbefore + transcriptnow;
+    console.log('识别结果:', transcriptnow);
+    if(event.results[event.results.length - 1].isFinal===true){
+        console.log('识别完成');
+    }
+};
+
+// 识别错误事件
+recognition.onerror = (event) => {
+    switch (event.error) {
+        case 'not-allowed':
+        case 'security':
+            console.log('设备拒绝录音请求');
+            break;
+        case 'no-speech':
+            console.log('接收声音超时');
+            break;
+        default:
+            console.log(`错误: ${event.error}`);
+            break;
+    }
+};
+
+// 识别结束事件
+recognition.onend = () => {
+    const spinIcon = document.getElementById('spinIcon');
+    spinIcon.classList.remove('spin'); // 识别结束后恢复为方块
+    console.log('语音识别结束');
+};
