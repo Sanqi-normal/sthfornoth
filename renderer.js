@@ -283,60 +283,109 @@ function displaySuggestions(aiResponse) {
 
 
 //语音识别
-// 创建 SpeechRecognition 对象
-const recognition = new webkitSpeechRecognition();
-recognition.lang = 'zh-CN'; // 设置识别语言为中文
-recognition.continuous = true; // 设置为连续识别
-recognition.interimResults = true; // 设置为返回中间结果
+const axios = require('axios');
+const AK = "2NvV7nZe5oQP52eLLXnreZpH"
+const SK = "poW4D07V6i9OP3rgzUnR9Tzkw8FGvenz"
 
-let interimTranscript ; // 保存中间结果
-let inputTextbefore ;  
-// 图标点击事件
+async function sendSpeechToBaidu(speechBase64, speechLen) {
+    var options = {
+        'method': 'POST',
+        'url': 'https://vop.baidu.com/pro_api',
+        'headers': {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+        },
+        data: JSON.stringify({
+                "format": "m4a",
+                "rate": 16000,
+                "channel": 1,
+                "cuid": "9cQLDzSyPubdrI6cR1krYOO54vIRbrqX",
+                "dev_pid": 80001,
+                "token": await getAccessToken(),
+                "speech": speechBase64, // base64编码后的语音数据
+                "len": speechLen        // 语音数据长度（编码前的字节长度）
+        })
+
+    };
+
+    axios(options)
+        .then(response => {
+            // 处理成功响应
+            console.log(response.data);
+            const text = response.data.result[0];
+            userInput.value += text.replace(/。/g, '');
+        })
+        .catch(error => {
+            throw new Error(error);
+        })
+}
+
+/**
+ * 使用 AK，SK 生成鉴权签名（Access Token）
+ * @return string 鉴权签名信息（Access Token）
+ */
+function getAccessToken() {
+
+    let options = {
+        'method': 'POST',
+        'url': 'https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=' + AK + '&client_secret=' + SK,
+    }
+    return new Promise((resolve, reject) => {
+      axios(options)
+          .then(res => {
+              resolve(res.data.access_token)
+          })
+          .catch(error => {
+              reject(error)
+          })
+    })
+}
+
+let mediaRecorder = null;
+let audioChunks = [];
+
 document.getElementById('spinIcon').addEventListener('click', () => {
     const spinIcon = document.getElementById('spinIcon');
     spinIcon.classList.toggle('spin');
     const isSpinning = spinIcon.classList.contains('spin');
-    if (isSpinning) {
-        recognition.start();
-        interimTranscript = ''; // 清空中间结果
-        inputTextbefore = document.getElementById('userInput').innerText;//保存输入框内容
-        console.log('开始语音识别...');
 
-    } else {
-        recognition.stop();
-        console.log('停止语音识别...');
+    if (isSpinning) {
+        // 开始录音
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus',
+                    audioBitsPerSecond: 16000
+                });
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                audioChunks = [];
+                mediaRecorder.start(1000); // 每秒产生一个数据块
+            })
+            .catch(error => {
+                console.error('Error accessing microphone:', error);
+            });
+    }
+    else {
+        // 停止录音
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                
+                // 将 Blob 转换为 base64
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = function() {
+                    const base64data = reader.result.split(',')[1];
+                    sendSpeechToBaidu(base64data, audioBlob.size);
+                };
+                
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            };
+        }
     }
 });
-
-// 识别结果事件
-recognition.onresult = (event) => {
-    const transcriptnow = event.results[event.results.length - 1][0].transcript;
-    document.getElementById('userInput').innerText = inputTextbefore + transcriptnow;
-    console.log('识别结果:', transcriptnow);
-    if(event.results[event.results.length - 1].isFinal===true){
-        console.log('识别完成');
-    }
-};
-
-// 识别错误事件
-recognition.onerror = (event) => {
-    switch (event.error) {
-        case 'not-allowed':
-        case 'security':
-            console.log('设备拒绝录音请求');
-            break;
-        case 'no-speech':
-            console.log('接收声音超时');
-            break;
-        default:
-            console.log(`错误: ${event.error}`);
-            break;
-    }
-};
-
-// 识别结束事件
-recognition.onend = () => {
-    const spinIcon = document.getElementById('spinIcon');
-    spinIcon.classList.remove('spin'); // 识别结束后恢复为方块
-    console.log('语音识别结束');
-};

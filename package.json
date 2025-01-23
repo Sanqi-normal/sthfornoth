@@ -9,8 +9,11 @@
   "scripts": {
     "start": "electron ."
   },
-  "dependencies": {},
+  "dependencies": {
+    "axios": "^1.7.9",
+    "Games": "file:"
+  },
   "devDependencies": {
-    "electron": "33.3.0"
+    "electron": "^33.3.0"
   }
 }

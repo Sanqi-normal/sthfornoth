@@ -26,7 +26,7 @@ function createWindow() {
         }
         
      });
-    win.setMenu(null);
+    // win.setMenu(null);
     win.loadFile('index.html'); // 加载index.html文件
     sendRequest("",false);//初始化，第一次信息ai总是接收不到
 }
