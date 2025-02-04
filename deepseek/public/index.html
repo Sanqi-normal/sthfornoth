@@ -1,0 +1,295 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>DeepSeek Chat 网页版</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 80%;
+            margin: 0 auto;
+            padding: 0px;
+            background-color: #f5f6fa;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        .config-section {
+            margin-bottom: 20px;
+            display: grid;
+            grid-gap: 15px;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .temperature-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .user-message {
+            background-color: #e8f4fc;
+            margin-left: 20%;
+            white-space: pre-wrap;
+        }
+        .reasoning-message {
+            background-color: #f0f0f0;
+            color: #5a5a5a;
+            font-size: smaller;
+            margin-right: 20%;
+            white-space: pre-wrap;
+        }
+        .assistant-message {
+            background-color: #f0f0f0;
+            margin-right: 20%;
+            white-space: pre-wrap;
+        }
+
+        input, textarea, button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 48%;
+            background-color: var(--secondary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="config-section">
+            <div>
+                <label>系统提示词：</label>
+                <select id="role">
+                    <option value="default">默认</option>
+                    <option value="alice">Alice</option>
+                    <option value="catgirl">猫娘</option>
+                </select>
+                <textarea id="systemPrompt" rows="3">对话使用中文</textarea>
+            </div>
+            <div class="temperature-control">
+                <label>temperature: </label>
+                <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                <span id="tempValue">0.7</span>
+            </div>
+            <div>
+                <label>模型选择：</label>
+                <select id="model_options">
+                    <option value="deepseek-chat">chat(V3)</option>
+                    <option value="deepseek-reasoner">R1</option>
+                </select>
+            </div>
+            <div>
+                <label>sessionId:</label>
+                <input  type="text" id="sessionId" value="0">
+            </div>
+        </div>
+
+        <div id="messages"></div>
+
+        <div class="input-section">
+            <input type="text" id="userInput" placeholder="输入消息...">
+            <button onclick="sendMessage()">发送</button>
+            <button onclick="resetDialog()">新对话</button>
+        </div>
+    </div>
+
+    <script>
+        const messagesElement = document.getElementById('messages');
+        const tempValueElement = document.getElementById('tempValue');
+        const temperatureControl = document.getElementById('temperature');
+
+       //预选提示词
+    document.getElementById('role').addEventListener('change', function() {
+        var selectedValue = this.value;
+        var systemPrompt = document.getElementById('systemPrompt');
+        
+        if (selectedValue === 'default') {
+            systemPrompt.value = '对话使用中文';
+            document.getElementById('sessionId').value = '0';
+            document.getElementById('temperature').value = '1';
+        } else if(selectedValue === 'alice'){
+            systemPrompt.value = '回复执行后可满足命令的代码内容，如需提供必要信息，请在代码中获取用户输入';
+            document.getElementById('sessionId').value = 'powershell';
+            document.getElementById('model_options').value = 'deepseek-reasoner';
+            document.getElementById('temperature').value = '0';
+        }else if (selectedValue === 'catgirl') {
+            systemPrompt.value = '你是一只可爱的猫娘，模仿猫娘行为习惯，多用可爱的颜文字。';
+            document.getElementById('sessionId').value = '猫娘专线';
+            document.getElementById('model_options').value = 'deepseek-chat';
+            document.getElementById('temperature').value = '1.5';
+        }
+    });
+
+        // 实时显示温度值
+        temperatureControl.addEventListener('input', (e) => {
+            tempValueElement.textContent = e.target.value;
+        });
+
+        // 添加消息到聊天框
+    function addMessage(role, content) {
+        if(content&&content!==""){
+        // 获取messagesElement中的最后一个子元素
+        const lastMessageDiv = messagesElement.lastElementChild;
+        // 检查最后一个子元素是否存在，并且它的类名是否包含当前role
+        if (lastMessageDiv && lastMessageDiv.className.includes(`${role}-message`)) {
+        lastMessageDiv.textContent += `${content}`;
+        } else {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            messageDiv.textContent = content;
+            messagesElement.appendChild(messageDiv);
+            messagesElement.scrollTop = messagesElement.scrollHeight;
+        }
+    }
+    }
+
+        // 发送消息
+        async function sendMessage() {
+            const userInput = document.getElementById('userInput');
+            const systemPrompt = document.getElementById('systemPrompt').value;
+            const message = userInput.value.trim();
+            const model_options = document.getElementById('model_options').value;
+            const sessionId = document.getElementById('sessionId').value;
+            const role = document.getElementById('role').value;
+
+            if (!message) return;
+
+            // 清空输入框
+            userInput.value = '';
+            
+            // 显示用户消息
+            addMessage('user', message);
+            if(role ==='alice')
+            {
+                try {
+                const response = await fetch('/alice', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sessionId:sessionId,
+                        systemPrompt: systemPrompt,
+                        message: message,
+                        model:model_options,
+                        temperature: parseFloat(temperatureControl.value)
+                    })
+                });
+
+                if (!response.ok) throw new Error('请求失败');
+                
+                const data = await response.json();
+                if(data.reasoning_content)
+                {
+                    addMessage('reasoning', data.reasoning_content);
+                }
+                addMessage('assistant', data.message_content);
+            } catch (error) {
+                addMessage('system', `错误: ${error.message}`);
+            }
+            }else{
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sessionId:sessionId,
+                        systemPrompt: systemPrompt,
+                        message: message,
+                        model:model_options,
+                        temperature: parseFloat(temperatureControl.value)
+                    })
+                });
+
+                if (!response.ok) throw new Error('请求失败');
+                // 确保响应体是可读流
+                if (!response.body) {
+                    throw new Error('响应体不可用');
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let done = false;
+
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    const chunk = decoder.decode(value, { stream: !done });
+                    console.log(chunk);
+                    const jsonObjects = chunk.split('\n');
+                    for (const jsonObject of jsonObjects) {
+                            console.log(jsonObject);
+                            if (jsonObject.trim() === '') continue;
+                            const parsedChunk = JSON.parse(jsonObject);
+                            //console.log(parsedChunk);
+                    addMessage('reasoning', parsedChunk.part_reasoning_content??'');
+                    addMessage('assistant', parsedChunk.part_message_content??'');
+                    }
+                }
+            } catch (error) {
+                addMessage('system', `错误: ${error.message}`);
+            }
+        }
+        }
+        async function resetDialog() {
+            const response = await fetch('/reset', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                       sessionId:document.getElementById('sessionId').value
+                    })
+            });
+            location.reload();
+        }
+        // 回车发送消息
+        document.getElementById('userInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
