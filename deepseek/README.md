@@ -9,3 +9,7 @@
 system提示词可自定义
 
 `tempreture` 可调 0-2
+
+## 使用方法
+- `npm install openai`
+- 在`.env`文件中修改`apikey`
