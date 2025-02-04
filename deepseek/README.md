@@ -5,5 +5,7 @@
 - 开放端口
 
 sessionId 分辨对话历史，可自定义
+
 system提示词可自定义
+
 tempreture 可调 0-2
