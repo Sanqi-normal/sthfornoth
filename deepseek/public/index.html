@@ -91,17 +91,78 @@
         button:hover {
             background-color: #2980b9;
         }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #3498db;
+        }
+        .tabcontent {
+            display: none;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+        .tabcontent.active {
+            display: block;
+        }
+        .slider-container {
+            margin: 20px;
+            display: flex;  /* 将容器设置为弹性容器 */
+            align-items: center;
+        }
+        .slider-label-front {
+            display: block;
+            margin-bottom: 0px;
+            margin-right: 10px;
+        }
+        .slider-label {
+            display: block;
+            margin-bottom: 0px;
+        }
+        .slider {
+            width: 40%;
+            margin-bottom: 0px;
+        }
     </style>
 </head>
 <body>
-    <div class="chat-container">
+    <div class="tab">
+        <button class="tablinks active" onclick="openTab(event, 'Chat')">对话</button>
+        <button class="tablinks" onclick="openTab(event, 'Config')">参数</button>
+    </div>
+
+    <div id="Chat" class="tabcontent active">
+        <div id="messages"></div>
+        <div class="input-section">
+            <input type="text" id="userInput" placeholder="输入消息...">
+            <button onclick="sendMessage()">发送</button>
+            <button onclick="resetDialog()">新对话</button>
+        </div>
+    </div>
+
+    <div id="Config" class="tabcontent">
         <div class="config-section">
             <div>
                 <label>系统提示词：</label>
                 <select id="role">
                     <option value="default">默认</option>
                     <option value="alice">Alice</option>
-                    <option value="catgirl">猫娘</option>
+                    <option value="code">CODE</option>
                 </select>
                 <textarea id="systemPrompt" rows="3">对话使用中文</textarea>
             </div>
@@ -121,18 +182,47 @@
                 <label>sessionId:</label>
                 <input  type="text" id="sessionId" value="0">
             </div>
-        </div>
-
-        <div id="messages"></div>
-
-        <div class="input-section">
-            <input type="text" id="userInput" placeholder="输入消息...">
-            <button onclick="sendMessage()">发送</button>
-            <button onclick="resetDialog()">新对话</button>
+            <div class="slider-container">
+                <label class="slider-label-front">情绪值</label>
+                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                <label class="slider-label">一般</label>
+            </div>
+            <div class="slider-container">
+                <label class="slider-label-front">信任值</label>
+                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                <label class="slider-label">一般</label>
+            </div>
+            <div class="slider-container">
+                <label class="slider-label-front">关注值</label>
+                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                <label class="slider-label">一般</label>
+            </div>
+            <div class="slider-container">
+                <label class="slider-label-front">外向值</label>
+                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                <label class="slider-label">一般</label>
+            </div>
+            <div class="slider-container">
+                <label class="slider-label-front">兴趣值</label>
+                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                <label class="slider-label">一般</label>
+            </div>      
         </div>
     </div>
-
     <script>
+        function openTab(evt, tabName) {
+    var i, tabcontent, tablinks;
+    tabcontent = document.getElementsByClassName("tabcontent");
+    for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].className = tabcontent[i].className.replace(" active", "");
+    }
+    tablinks = document.getElementsByClassName("tablinks");
+    for (i = 0; i < tablinks.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(" active", "");
+    }
+    document.getElementById(tabName).className += " active";
+    evt.currentTarget.className += " active";
+}
         const messagesElement = document.getElementById('messages');
         const tempValueElement = document.getElementById('tempValue');
         const temperatureControl = document.getElementById('temperature');
@@ -146,14 +236,19 @@
             systemPrompt.value = '对话使用中文';
             document.getElementById('sessionId').value = '0';
             document.getElementById('temperature').value = '1';
-        } else if(selectedValue === 'alice'){
+        } else if(selectedValue === 'code'){
             systemPrompt.value = '回复执行后可满足命令的代码内容，如需提供必要信息，请在代码中获取用户输入';
             document.getElementById('sessionId').value = 'powershell';
             document.getElementById('model_options').value = 'deepseek-reasoner';
             document.getElementById('temperature').value = '0';
-        }else if (selectedValue === 'catgirl') {
-            systemPrompt.value = '你是一只可爱的猫娘，模仿猫娘行为习惯，多用可爱的颜文字。';
-            document.getElementById('sessionId').value = '猫娘专线';
+        }else if (selectedValue === 'alice') {
+            fetch('/config-alice')
+            .then(response => response.json())
+            .then(data => {
+                systemPrompt.value = data.AlicePrompt;
+            })
+            .catch(error => console.error('Error:', error));
+            document.getElementById('sessionId').value = 'alice';
             document.getElementById('model_options').value = 'deepseek-chat';
             document.getElementById('temperature').value = '1.5';
         }
@@ -185,7 +280,7 @@
         // 发送消息
         async function sendMessage() {
             const userInput = document.getElementById('userInput');
-            const systemPrompt = document.getElementById('systemPrompt').value;
+            var systemPrompt = document.getElementById('systemPrompt').value;
             const message = userInput.value.trim();
             const model_options = document.getElementById('model_options').value;
             const sessionId = document.getElementById('sessionId').value;
@@ -195,13 +290,17 @@
 
             // 清空输入框
             userInput.value = '';
-            
+            if(sessionId=="alice"){
+                systemPrompt+=printSliderValues();
+                const currentTime = new Date().toLocaleString();
+                systemPrompt+=`\n当前本地时间: ${currentTime}`;
+            }
             // 显示用户消息
             addMessage('user', message);
-            if(role ==='alice')
+            if(role ==='code')
             {
                 try {
-                const response = await fetch('/alice', {
+                const response = await fetch('/code', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -290,6 +389,72 @@
                 sendMessage();
             }
         });
+    // 这里可以根据需要添加JavaScript来处理滑动条的变化
+    const sliders = document.querySelectorAll('.slider');
+        const labels = document.querySelectorAll('.slider-label');
+        const positiveEmotions = ['兴奋', '依赖', '崇敬', '活泼', '惊讶'];
+        const negativeEmotions = ['悲伤', '厌恶', '漠视', '羞涩', '懒惰'];
+        const neutralEmotions = ['开心', '信任', '在意', '坦诚', '好奇']; // 中立情绪
+        const extremeNegativeEmotions = ['抑郁', '敌对', '鄙视', '内向', '困倦']; // 极端消极情绪
+
+        sliders.forEach((slider, index) => {
+            //初始化
+            const value = slider.value;
+                const label = labels[index];
+
+                if (value > 60) {
+                    label.textContent = positiveEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'red'; // 积极情绪的颜色
+                } else if (value > 20) {
+                    label.textContent = neutralEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'green'; // 中立情绪的颜色
+                } else if (value < -20 && value >-60 ) {
+                    label.textContent = negativeEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'blue'; // 消极情绪的颜色
+                } else if (value < -60) {
+                    label.textContent = extremeNegativeEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'purple'; // 极端消极情绪的颜色
+                } else {
+                    label.textContent = '一般';
+                    slider.style.backgroundColor =label.style.color = 'grey'; // 中立颜色
+                }
+            slider.addEventListener('input', (event) => {
+                const value = event.target.value;
+                const label = labels[index];
+
+                if (value > 60) {
+                    label.textContent = positiveEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'red'; // 积极情绪的颜色
+                } else if (value > 20) {
+                    label.textContent = neutralEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'green'; // 中立情绪的颜色
+                } else if (value < -20 && value >-60 ) {
+                    label.textContent = negativeEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'blue'; // 消极情绪的颜色
+                } else if (value < -60) {
+                    label.textContent = extremeNegativeEmotions[index];
+                    slider.style.backgroundColor =label.style.color = 'purple'; // 极端消极情绪的颜色
+                } else {
+                    label.textContent = '一般';
+                    slider.style.backgroundColor =label.style.color = 'grey'; // 中立颜色
+                }
+            });
+        });
+function printSliderValues() {
+    const sliders = document.querySelectorAll('.slider');
+    const labels = document.querySelectorAll('.slider-label');
+    const sliderNames = ['情绪值', '信任值', '关注值', '外向值', '兴趣值']; // 滑动条名称
+
+    let output = '';
+    sliders.forEach((slider, index) => {
+        output += `${sliderNames[index]}: ${labels[index].textContent}, `;
+    });
+
+    // 移除最后一个逗号和空格
+    output = output.slice(0, -2);
+    output = '\n你当前的情绪塑造：'+output+"\n注意此情绪只为你对于用户的情绪，确保言行不违背情绪。对话不要添加括号，可以适当添加符合情绪的语气词和颜文字";
+    return output;
+}
     </script>
 </body>
 </html>

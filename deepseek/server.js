@@ -1,6 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs'); // 文件系统模块
+const path = require('path'); // 路径模块
+const sessionsDir = __dirname; // 会话目录
 const OpenAI = require('openai');
 
 const app = express();
@@ -60,6 +63,12 @@ if (data.is_available) {
 .catch((error) => {
   console.log(error);
 });
+// 返回Alice配置信息
+app.get('/config-alice', (req, res) => {
+    res.json({
+      AlicePrompt: process.env.ALICE_PROMPT,
+    });
+  });
 // 处理聊天请求
 app.post('/chat', async (req, res) => {
     try {
@@ -79,8 +88,9 @@ app.post('/chat', async (req, res) => {
            }
         // 添加用户消息到历史
         history.push({ role: "user", content: message });
-
-        // 创建完整消息列表
+        if(sessionId=='alice'){
+            SaveHistory({ role: "user", content: `[${new Date().toLocaleString()}]`+message });
+        }// 创建完整消息列表
         const messages = [
             { role: "system", content: systemPrompt },
             ...history
@@ -111,7 +121,15 @@ app.post('/chat', async (req, res) => {
         reasoning_content += part_reasoning_content;
         message_content += part_message_content;
     }
+    
+    // 控制历史记录长度
+    while (history.length >= 4) {
+        history.shift(); // 移除最早的条目
+    }
         history.push({ role: "assistant", content: message_content });
+        if(sessionId=='alice'){
+            SaveHistory({ role: "assistant", content: `[${new Date().toLocaleString()}]`+message_content });
+        }
         res.end();
         
     } catch (error) {
@@ -124,7 +142,7 @@ app.post('/chat', async (req, res) => {
 });
 
 // 返回Alice命令执行代码
-app.post('/alice', async (req, res) => {
+app.post('/code', async (req, res) => {
     try {
         const { sessionId, systemPrompt, message,model, temperature } = req.body;
         // 创建完整消息列表
@@ -178,7 +196,21 @@ app.post('/reset', async (req, res) => {
         });
     }
 });
-
+// 保存对话历史函数
+async function SaveHistory(history) {
+    const filePath = path.join(sessionsDir, 'alice_history.json');
+    try {
+        let fileContent = await fs.promises.readFile(filePath, 'utf8');
+        fileContent = fileContent.slice(0, -2)+",\n"+JSON.stringify(history, null, 2)+"\n]";
+        await fs.promises.writeFile(
+            filePath,
+            fileContent,
+            'utf8'
+        );
+    } catch (error) {
+        console.error('追加Alice对话失败：', error);
+    }
+}
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
