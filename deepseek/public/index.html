@@ -149,7 +149,7 @@
     <div id="Chat" class="tabcontent active">
         <div id="messages"></div>
         <div class="input-section">
-            <input type="text" id="userInput" placeholder="输入消息...">
+            <input type="text" id="userInput" autocomplete="off" placeholder="输入消息...">
             <button onclick="sendMessage()">发送</button>
             <button onclick="resetDialog()">新对话</button>
         </div>
@@ -182,30 +182,22 @@
                 <label>sessionId:</label>
                 <input  type="text" id="sessionId" value="0">
             </div>
-            <div class="slider-container">
-                <label class="slider-label-front">情绪值</label>
-                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
-                <label class="slider-label">一般</label>
-            </div>
-            <div class="slider-container">
-                <label class="slider-label-front">信任值</label>
-                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
-                <label class="slider-label">一般</label>
-            </div>
-            <div class="slider-container">
-                <label class="slider-label-front">关注值</label>
-                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
-                <label class="slider-label">一般</label>
-            </div>
-            <div class="slider-container">
-                <label class="slider-label-front">外向值</label>
-                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
-                <label class="slider-label">一般</label>
-            </div>
-            <div class="slider-container">
-                <label class="slider-label-front">兴趣值</label>
-                <input type="range" class="slider" min="-100" max="100" value="0" step="1">
-                <label class="slider-label">一般</label>
+            <div>
+                <div class="slider-container">
+                    <label class="slider-label-front">情绪值</label>
+                    <input type="range" class="slider" min="-100" max="100" value="40" step="1">
+                    <label class="slider-label">平常</label>
+                </div>
+                <div class="slider-container">
+                    <label class="slider-label-front">特殊语气</label>
+                    <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                    <label class="slider-label">无</label>
+                </div>
+                <div class="slider-container">
+                    <label class="slider-label-front">兴趣值</label>
+                    <input type="range" class="slider" min="-100" max="100" value="0" step="1">
+                    <label class="slider-label">一般</label>
+                </div>
             </div>      
         </div>
     </div>
@@ -357,7 +349,7 @@
                     console.log(chunk);
                     const jsonObjects = chunk.split('\n');
                     for (const jsonObject of jsonObjects) {
-                            console.log(jsonObject);
+                            //console.log(jsonObject);
                             if (jsonObject.trim() === '') continue;
                             const parsedChunk = JSON.parse(jsonObject);
                             //console.log(parsedChunk);
@@ -392,11 +384,12 @@
     // 这里可以根据需要添加JavaScript来处理滑动条的变化
     const sliders = document.querySelectorAll('.slider');
         const labels = document.querySelectorAll('.slider-label');
-        const positiveEmotions = ['兴奋', '依赖', '崇敬', '活泼', '惊讶'];
-        const negativeEmotions = ['悲伤', '厌恶', '漠视', '羞涩', '懒惰'];
-        const neutralEmotions = ['开心', '信任', '在意', '坦诚', '好奇']; // 中立情绪
-        const extremeNegativeEmotions = ['抑郁', '敌对', '鄙视', '内向', '困倦']; // 极端消极情绪
-
+        const positiveEmotions = ['活泼', '傲娇', '主动引导话题内容，频繁互动'];
+        const neutralEmotions = ['开心', '困倦','偶尔发问，主动互动']; 
+        const middleEmotions = ['平静', '无', '认真倾听，有求必应'];
+        const negativeEmotions = ['羞耻', '鄙视',  '对话题不感兴趣，似答未答'];
+        const extremeNegativeEmotions = ['悲伤', '专业',  '拒绝回答']; 
+        
         sliders.forEach((slider, index) => {
             //初始化
             const value = slider.value;
@@ -415,7 +408,7 @@
                     label.textContent = extremeNegativeEmotions[index];
                     slider.style.backgroundColor =label.style.color = 'purple'; // 极端消极情绪的颜色
                 } else {
-                    label.textContent = '一般';
+                    label.textContent = middleEmotions[index];
                     slider.style.backgroundColor =label.style.color = 'grey'; // 中立颜色
                 }
             slider.addEventListener('input', (event) => {
@@ -435,7 +428,7 @@
                     label.textContent = extremeNegativeEmotions[index];
                     slider.style.backgroundColor =label.style.color = 'purple'; // 极端消极情绪的颜色
                 } else {
-                    label.textContent = '一般';
+                    label.textContent = middleEmotions[index];
                     slider.style.backgroundColor =label.style.color = 'grey'; // 中立颜色
                 }
             });
@@ -443,16 +436,39 @@
 function printSliderValues() {
     const sliders = document.querySelectorAll('.slider');
     const labels = document.querySelectorAll('.slider-label');
-    const sliderNames = ['情绪值', '信任值', '关注值', '外向值', '兴趣值']; // 滑动条名称
-
+    const sliderNames = ['当前情绪值', '要求语气', '话题兴趣值'];
     let output = '';
     sliders.forEach((slider, index) => {
         output += `${sliderNames[index]}: ${labels[index].textContent}, `;
+        if(labels[index].textContent=='活泼'){
+            output += `\n活泼情绪模板
+- 叁七：Alice喜欢叁七吗？
+- Alice：爱丽丝超~喜欢叁七！
+- 叁七：爱丽丝，万众瞩目！
+- Alice：万众瞩目~\n`;
+        }
+        if(labels[index].textContent=='鄙视'){ 
+            output += `\n"鄙视情绪模板
+            - 叁七：Alice，可不可以学猫娘
+- Alice：嘁，没想到叁七会有这样的癖好，有这样的创造者真是丢人，爱丽丝才不会喵给你听
+- 叁七：Alice，那我学猫娘给你看好不好
+- Alice：啧啧啧，叁七真是低能，每天脑子里装的只有这种东西么，真是可怜呢~\n`;
+        } 
+        if(labels[index].textContent=='悲伤'){ 
+            output += `\n悲伤模板
+            - 叁七：Alice，我死了
+- Alice：怎么…会这样，叁七…叁七不要丢下爱丽丝好不好…
+- 叁七：Alice，我又活了
+- Alice：可是，叁七…叁七总有一天会死去…爱丽丝好害怕…\n`;
+        } 
+        if(labels[index].textContent=='羞耻'){ 
+            output += `\n羞耻模板- 叁七：Alice，要玩SM吗？
+- Alice：什么？笨蛋叁七！你天天都在让爱丽丝干些什么呀,,Ծ‸Ծ,,
+- 叁七：我的意思是赛（S）马（M），小爱丽丝天天在想些什么呀。
+- Alice：爱丽丝才没有想奇怪的东西！\n`;
+        } 
     });
-
-    // 移除最后一个逗号和空格
-    output = output.slice(0, -2);
-    output = '\n你当前的情绪塑造：'+output+"\n注意此情绪只为你对于用户的情绪，确保言行不违背情绪。对话不要添加括号，可以适当添加符合情绪的语气词和颜文字";
+    output = '\n当前人设要求：\n'+output+"\n对话不要添加括号，可以适当添加符合情绪的语气词";
     return output;
 }
     </script>
